@@ -1,0 +1,2942 @@
+--// Quasar-X v2.0 Public | responsive UI library for mobile and desktop
+--// Load: loadstring(game:HttpGet(URL))()
+--// API: CreateWindow / AddTab / AddSection / AddToggle / AddSlider / AddDropdown /
+--//      AddInput / AddKeybind / AddButton / AddLabel / Notify
+--//      KeyWindow (jendela key bergaya hub: Verify Key / Get Key / About Us / Partners)
+--//      KeyPrompt (jendela key kecil, versi lama)
+--//
+--// Isi file:
+--//   1. Theme & konfigurasi        4. Window (header, sidebar, layout adaptif)
+--//   2. Helper & ikon vektor       5. RGB & mode hemat performa
+--//   3. Efek tween yang bisa mati  6. Tab + komponen
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- API executor opsional; nama implementasinya berbeda-beda.
+local function FirstFunction(...)
+        for i = 1, select("#", ...) do
+                local fn = select(i, ...)
+                if typeof(fn) == "function" then return fn end
+        end
+        return nil
+end
+
+local customAssetFn = FirstFunction(getcustomasset, getsynasset)
+local clipboardFn = FirstFunction(setclipboard, toclipboard)
+
+local function SetClipboard(value)
+        if not clipboardFn then return false end
+        local ok = pcall(clipboardFn, tostring(value or ""))
+        return ok
+end
+
+local Library = { Version = "2.0.0", Windows = {} }
+
+local function SafeConfigKey(value)
+        local key = tostring(value or "default"):lower():gsub("[^%w%-_]", "_"):gsub("_+", "_")
+        key = key:sub(1, 48)
+        return key ~= "" and key or "default"
+end
+
+--// ===== 1. Theme & konfigurasi =====
+
+local Theme = {
+        Background = Color3.fromHex("#0A0F1B"),
+        Panel = Color3.fromHex("#0E1422"),
+        Card = Color3.fromHex("#141B2E"),
+        Secondary = Color3.fromHex("#1A2338"),
+        Hover = Color3.fromHex("#212C47"),
+        Off = Color3.fromHex("#2B3550"),
+        Border = Color3.fromHex("#263150"),
+        Glow = Color3.fromHex("#5A78D2"),
+        Blue = Color3.fromHex("#5685FF"),
+        Purple = Color3.fromHex("#9B6BFF"),
+        Red = Color3.fromHex("#FF526D"),
+        Soft = Color3.fromHex("#DCE6FF"), -- pengganti putih murni untuk kontrol interaktif
+        Cyan = Color3.fromHex("#8FB8FF"),
+        Text = Color3.fromHex("#F2F5FF"),
+        SubText = Color3.fromHex("#98A4C4"),
+}
+Library.Theme = Theme -- ubah sebelum CreateWindow kalau mau ganti warna
+
+-- Sumber ikon (dicoba berurutan): file lokal -> URL -> ID asset
+Library.DefaultIconFile = nil
+Library.DefaultIconURL = nil
+Library.DefaultIcon = 88259772070047
+Library.IconSize = 60 -- diameter tombol logo bulat (piksel)
+Library.IconZoom = 1.25 -- pembesaran gambar di dalam lingkaran
+
+-- Transparansi: 0 = padat. Default dibuat solid (~94%) supaya tulisan tidak terganggu objek game.
+Library.PanelTransparency = 0.06
+Library.CardTransparency = 0.1
+Library.FieldTransparency = 0.18
+
+-- Aksen kontrol (toggle, slider, indikator) = biru polos. Hanya tepi panel & logo yang punya
+-- cahaya merah-putih berputar (lewat TweenService; mati otomatis di mode hemat).
+Library.Performance = "Auto" -- Auto mulai ringan lalu mengaktifkan efek jika FPS stabil; High / Low
+
+local WIN_H = 360 -- tinggi dasar desktop
+local MOBILE_H = 460 -- ruang konten ekstra untuk layout HP portrait
+local MIN_W, MAX_W = 470, 700
+local SCALES = { Small = 0.85, Medium = 1, Large = 1.2 }
+local FONT = {
+        Regular = Enum.Font.Gotham,
+        Medium = Enum.Font.GothamMedium,
+        Semi = Enum.Font.GothamSemibold,
+        Bold = Enum.Font.GothamBold,
+}
+
+--// ===== 2. Helper =====
+
+local function New(class, props, children)
+        local inst = Instance.new(class)
+        for k, v in pairs(props or {}) do
+                if k ~= "Parent" then
+                        inst[k] = v
+                end
+        end
+        for _, child in ipairs(children or {}) do
+                child.Parent = inst
+        end
+        if props and props.Parent then
+                inst.Parent = props.Parent
+        end
+        return inst
+end
+
+local function Corner(offset, scale)
+        return New("UICorner", { CornerRadius = UDim.new(scale or 0, offset or 0) })
+end
+
+local function Pad(l, t, r, b)
+        return New("UIPadding", {
+                PaddingLeft = UDim.new(0, l),
+                PaddingTop = UDim.new(0, t),
+                PaddingRight = UDim.new(0, r),
+                PaddingBottom = UDim.new(0, b),
+        })
+end
+
+local function Stroke(color, thickness, transparency)
+        return New("UIStroke", {
+                Color = color or Theme.Border,
+                Thickness = thickness or 1,
+                Transparency = transparency or 0,
+        })
+end
+
+-- Gradasi statis satu keluarga biru. fade = true membuat ujung akhir memudar.
+local function Gradient(rotation, fade)
+        return New("UIGradient", {
+                Color = ColorSequence.new(Theme.Blue, Theme.Cyan),
+                Transparency = fade and NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0),
+                        NumberSequenceKeypoint.new(1, 0.9),
+                }) or NumberSequence.new(0),
+                Rotation = rotation or 0,
+        })
+end
+
+local function GradStroke(thickness, rotation, transparency)
+        return New("UIStroke", {
+                Color = Color3.new(1, 1, 1),
+                Thickness = thickness or 1,
+                Transparency = transparency or 0,
+        }, { Gradient(rotation or 0) })
+end
+
+-- Garis tepi dengan cahaya merah-putih yang berputar mengelilingi bingkai (dasar biru).
+-- Perputaran dijalankan oleh Window (lihat _regStroke) agar bisa dihentikan saat disembunyikan.
+local function OrbitStroke(thickness)
+        return New("UIStroke", {
+                Color = Color3.new(1, 1, 1),
+                Thickness = thickness or 1.5,
+                Transparency = 0,
+        }, {
+                New("UIGradient", {
+                        Color = ColorSequence.new({
+                                ColorSequenceKeypoint.new(0, Theme.Blue),
+                                ColorSequenceKeypoint.new(0.3, Theme.Blue),
+                                ColorSequenceKeypoint.new(0.48, Theme.Red),
+                                ColorSequenceKeypoint.new(0.58, Color3.new(1, 1, 1)),
+                                ColorSequenceKeypoint.new(0.68, Theme.Red),
+                                ColorSequenceKeypoint.new(0.86, Theme.Blue),
+                                ColorSequenceKeypoint.new(1, Theme.Blue),
+                        }),
+                        Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 0.7),
+                                NumberSequenceKeypoint.new(0.3, 0.7),
+                                NumberSequenceKeypoint.new(0.5, 0.05),
+                                NumberSequenceKeypoint.new(0.58, 0),
+                                NumberSequenceKeypoint.new(0.66, 0.05),
+                                NumberSequenceKeypoint.new(0.86, 0.7),
+                                NumberSequenceKeypoint.new(1, 0.7),
+                        }),
+                        Rotation = 45,
+                }),
+        })
+end
+
+--// ===== 3. Tween yang bisa dimatikan (mode hemat) =====
+
+local PERF = { low = false }
+local NoTween = { Play = function() end, Cancel = function() end, Pause = function() end }
+
+local function Tween(inst, time, props, style)
+        if typeof(inst) ~= "Instance" then return NoTween end
+        if PERF.low then
+                for k, v in pairs(props) do pcall(function() inst[k] = v end) end
+                return NoTween
+        end
+        local ok, tw = pcall(function()
+                return TweenService:Create(inst,
+                        TweenInfo.new(time, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
+        end)
+        if ok and tw then
+                local played = pcall(function() tw:Play() end)
+                if played then return tw end
+        end
+        for k, v in pairs(props) do pcall(function() inst[k] = v end) end
+        return NoTween
+end
+
+local function SafeCall(fn, ...)
+        if typeof(fn) ~= "function" then
+                return
+        end
+        local ok, err = pcall(fn, ...)
+        if not ok then
+                warn("[Quasar-X] error di callback: " .. tostring(err))
+        end
+end
+
+local function IsPress(input)
+        return input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function IsMove(input)
+        return input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch
+end
+
+-- Umpan balik tekan: warna target berubah saat ditekan, kembali saat dilepas.
+local function Pressable(btn, target, normal, pressed)
+        btn.MouseButton1Down:Connect(function()
+                Tween(target, 0.07, { BackgroundColor3 = pressed })
+        end)
+        local function release()
+                Tween(target, 0.16, { BackgroundColor3 = normal })
+        end
+        btn.MouseButton1Up:Connect(release)
+        btn.MouseLeave:Connect(release)
+end
+
+local function ToAsset(icon)
+        if icon == nil then
+                return ""
+        end
+        if type(icon) == "number" then
+                return "rbxassetid://" .. icon
+        end
+        if tostring(icon):match("^%d+$") then
+                return "rbxassetid://" .. tostring(icon)
+        end
+        return tostring(icon)
+end
+
+-- Cache logo: cek file lokal secara cepat, tetapi jangan mengunduh jaringan saat window dibuat.
+local iconUrlStates = {}
+
+local function IconCachePaths(url, createFolder)
+        local cleanUrl = tostring(url or ""):gsub("[?#].*$", "")
+        local ext = (cleanUrl:match("%.([%w]+)$") or "png"):lower()
+        if ext ~= "png" and ext ~= "jpg" and ext ~= "jpeg" and ext ~= "webp" then
+                ext = "png"
+        end
+
+        local paths = {}
+        if typeof(isfolder) == "function" and typeof(makefolder) == "function" then
+                local folderOk, exists = pcall(isfolder, "Quasar-X")
+                if folderOk and not exists and createFolder then
+                        folderOk, exists = pcall(makefolder, "Quasar-X")
+                        exists = folderOk
+                end
+                if folderOk and exists then
+                        table.insert(paths, "Quasar-X/icon." .. ext)
+                end
+        end
+        table.insert(paths, "Quasar-X_icon." .. ext)
+        return paths
+end
+
+-- Urutan sumber ikon: file lokal/cache -> ID asset. Pengunduhan URL dilakukan terpisah.
+local function ResolveIcon(icon, file, url)
+        if customAssetFn then
+                local candidates = {}
+                if file and file ~= "" then
+                        table.insert(candidates, { Path = file, Source = "file" })
+                end
+                if url and url ~= "" and typeof(writefile) == "function" then
+                        for _, path in ipairs(IconCachePaths(url, false)) do
+                                table.insert(candidates, { Path = path, Source = "url" })
+                        end
+                end
+
+                for _, item in ipairs(candidates) do
+                        local canLoad = true
+                        if typeof(isfile) == "function" then
+                                local checkOk, exists = pcall(isfile, item.Path)
+                                canLoad = checkOk and exists == true
+                        end
+                        if canLoad then
+                                local ok, asset = pcall(customAssetFn, item.Path)
+                                if ok and asset then return asset, item.Source end
+                        end
+                end
+        end
+        return ToAsset(icon), "id"
+end
+
+-- Unduh logo di coroutine terpisah. UI langsung memakai ID Decal, lalu ditukar ke cache GitHub
+-- setelah file siap. Satu URL hanya diunduh sekali selama library masih hidup.
+local function LoadIconFromUrl(url, callback)
+        if type(url) ~= "string" or url == "" or not customAssetFn
+                or typeof(writefile) ~= "function" then
+                return false
+        end
+
+        local current = iconUrlStates[url]
+        if current then
+                if current.asset then
+                        if typeof(callback) == "function" then
+                                task.defer(callback, current.asset)
+                        end
+                elseif typeof(callback) == "function" then
+                        table.insert(current.callbacks, callback)
+                end
+                return true
+        end
+
+        local state = { callbacks = {} }
+        if typeof(callback) == "function" then
+                table.insert(state.callbacks, callback)
+        end
+        iconUrlStates[url] = state
+
+        task.spawn(function()
+                local asset
+                local paths = IconCachePaths(url, true)
+
+                -- Gunakan cache terlebih dahulu agar pemanggilan berikutnya tidak mengunduh lagi.
+                for _, path in ipairs(paths) do
+                        local canLoad = true
+                        if typeof(isfile) == "function" then
+                                local checkOk, exists = pcall(isfile, path)
+                                canLoad = checkOk and exists == true
+                        end
+                        if canLoad then
+                                local ok, cached = pcall(customAssetFn, path)
+                                if ok and cached then
+                                        asset = cached
+                                        break
+                                end
+                        end
+                end
+
+                if not asset then
+                        local httpOk, body = pcall(function()
+                                return game:HttpGet(url)
+                        end)
+                        if httpOk and type(body) == "string" and body ~= "" then
+                                for _, path in ipairs(paths) do
+                                        local writeOk = pcall(writefile, path, body)
+                                        if writeOk then
+                                                local assetOk, downloaded = pcall(customAssetFn, path)
+                                                if assetOk and downloaded then
+                                                        asset = downloaded
+                                                        break
+                                                end
+                                        end
+                                end
+                        end
+                end
+
+                if asset then
+                        state.asset = asset
+                else
+                        iconUrlStates[url] = nil -- izinkan percobaan ulang jika unduhan gagal
+                end
+
+                for _, fn in ipairs(state.callbacks) do
+                        if asset then
+                                pcall(fn, asset)
+                        end
+                end
+                state.callbacks = {}
+        end)
+
+        return true
+end
+
+-- GUI dipasang secara transparan ke PlayerGui milik LocalPlayer.
+-- Tidak memakai gethui/protectgui atau parent tersembunyi; ini bukan mekanisme anti-cheat bypass.
+local function GetGuiParent()
+        local player = LocalPlayer or Players.LocalPlayer
+        if not player then return nil end
+        local ok, playerGui = pcall(function()
+                return player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10)
+        end)
+        if ok then return playerGui end
+        return nil
+end
+
+local function SetGuiParent(gui, preferred)
+        local player = LocalPlayer or Players.LocalPlayer
+        if not player then return false, nil end
+        local ok, playerGui = pcall(function()
+                return player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 5)
+        end)
+        if not ok or not playerGui then return false, nil end
+        local parent = preferred == playerGui and preferred or playerGui
+        local mounted = pcall(function() gui.Parent = parent end)
+        return mounted, mounted and parent or nil
+end
+
+-- Menjaga panel tidak keluar layar (sebagian header harus tetap terlihat).
+local function ClampToScreen(frame, getScale)
+        local cam = workspace.CurrentCamera
+        if not cam then
+                return
+        end
+        local vp = cam.ViewportSize
+        local pos, size = frame.AbsolutePosition, frame.AbsoluteSize
+        if size.X < 10 or size.Y < 10 then
+                return -- belum dirender
+        end
+        local dx, dy = 0, 0
+        if pos.X > vp.X - 80 then
+                dx = (vp.X - 80) - pos.X
+        elseif pos.X + size.X < 80 then
+                dx = 80 - (pos.X + size.X)
+        end
+        if pos.Y < 0 then
+                dy = -pos.Y
+        elseif pos.Y > vp.Y - 50 then
+                dy = (vp.Y - 50) - pos.Y
+        end
+        if dx ~= 0 or dy ~= 0 then
+                local s = getScale and getScale() or 1
+                local p = frame.Position
+                frame.Position = UDim2.new(p.X.Scale, p.X.Offset + dx / s, p.Y.Scale, p.Y.Offset + dy / s)
+        end
+end
+
+local function MakeDraggable(handle, target, track, onClick, getScale)
+        local dragging, dragStart, startPos, dragInput = false, nil, nil, nil
+        local moved = 0
+        track(handle.InputBegan:Connect(function(input)
+                if IsPress(input) then
+                        dragging = true
+                        moved = 0
+                        dragStart = input.Position
+                        startPos = target.Position
+                        local conn
+                        conn = input.Changed:Connect(function()
+                                if input.UserInputState == Enum.UserInputState.End then
+                                        dragging = false
+                                        conn:Disconnect()
+                                        if onClick and moved < 6 then
+                                                onClick()
+                                        end
+                                end
+                        end)
+                end
+        end))
+        track(handle.InputChanged:Connect(function(input)
+                if IsMove(input) then
+                        dragInput = input
+                end
+        end))
+        track(UserInputService.InputChanged:Connect(function(input)
+                if dragging and input == dragInput then
+                        local delta = input.Position - dragStart
+                        moved = math.max(moved, delta.Magnitude)
+                        local s = getScale and getScale() or 1
+                        target.Position = UDim2.new(
+                                startPos.X.Scale, startPos.X.Offset + delta.X / s,
+                                startPos.Y.Scale, startPos.Y.Offset + delta.Y / s
+                        )
+                        ClampToScreen(target, getScale)
+                end
+        end))
+end
+
+-- Ikon vektor (digambar dari Frame, jadi tidak bergantung font atau asset).
+local function MagnifierIcon(parent, position)
+        local holder = New("Frame", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = position,
+                Size = UDim2.fromOffset(16, 16),
+                BackgroundTransparency = 1,
+                Parent = parent,
+        })
+        New("Frame", {
+                Position = UDim2.fromOffset(1, 1),
+                Size = UDim2.fromOffset(10, 10),
+                BackgroundTransparency = 1,
+                Parent = holder,
+        }, { Corner(0, 1), Stroke(Theme.SubText, 1.6, 0) })
+        New("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.fromOffset(12.5, 12.5),
+                Size = UDim2.fromOffset(6, 2),
+                Rotation = 45,
+                BackgroundColor3 = Theme.SubText,
+                BorderSizePixel = 0,
+                Parent = holder,
+        }, { Corner(0, 1) })
+        return holder
+end
+
+-- Tombol header: kind = "min" | "max" | "close"
+local function HeaderButton(parent, kind, xOffset, accent, callback)
+        local b = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, xOffset, 0.5, 0),
+                Size = UDim2.fromOffset(36, 36),
+                BackgroundColor3 = accent,
+                BackgroundTransparency = 1,
+                Text = "",
+                AutoButtonColor = false,
+                Parent = parent,
+        }, { Corner(10) })
+
+        local function bar(rot, yOff)
+                return New("Frame", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        Position = UDim2.new(0.5, 0, 0.5, yOff or 0),
+                        Size = UDim2.fromOffset(14, 2),
+                        Rotation = rot,
+                        BackgroundColor3 = Theme.SubText,
+                        BorderSizePixel = 0,
+                        Parent = b,
+                }, { Corner(0, 1) })
+        end
+
+        local bars, sqStroke = {}, nil
+        if kind == "close" then
+                bars = { bar(45), bar(-45) }
+        elseif kind == "min" then
+                bars = { bar(0, 4) }
+        else
+                local sq = New("Frame", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        Position = UDim2.fromScale(0.5, 0.5),
+                        Size = UDim2.fromOffset(12, 12),
+                        BackgroundTransparency = 1,
+                        Parent = b,
+                }, { Corner(3), Stroke(Theme.SubText, 2, 0) })
+                sqStroke = sq:FindFirstChildOfClass("UIStroke")
+        end
+
+        b.MouseEnter:Connect(function()
+                Tween(b, 0.12, { BackgroundTransparency = 0.85 })
+                for _, p in ipairs(bars) do
+                        Tween(p, 0.12, { BackgroundColor3 = accent })
+                end
+                if sqStroke then
+                        Tween(sqStroke, 0.12, { Color = accent })
+                end
+        end)
+        b.MouseLeave:Connect(function()
+                Tween(b, 0.14, { BackgroundTransparency = 1 })
+                for _, p in ipairs(bars) do
+                        Tween(p, 0.14, { BackgroundColor3 = Theme.SubText })
+                end
+                if sqStroke then
+                        Tween(sqStroke, 0.14, { Color = Theme.SubText })
+                end
+        end)
+        b.MouseButton1Click:Connect(callback)
+        return b
+end
+
+--// ===== 4. Window =====
+
+local Window = {}
+Window.__index = Window
+local Tab = {}
+Tab.__index = Tab
+
+function Library:CreateWindow(opts)
+        opts = opts or {}
+
+        -- Kait sistem key: kalau KeyCheck diberikan dan tidak mengembalikan true, window tidak dibuat.
+        if typeof(opts.KeyCheck) == "function" then
+                local ok, valid = pcall(opts.KeyCheck)
+                if not ok or valid ~= true then
+                        warn("[Quasar-X] KeyCheck gagal, window tidak dibuat.")
+                        return nil
+                end
+        end
+
+        local self = setmetatable({}, Window)
+        self.Title = tostring(opts.Title or "Quasar-X")
+        self.Flags = {}
+        self._autoSave = opts.AutoSave ~= false
+        self._autoLoad = opts.AutoLoad ~= false
+        self._saveRevision = 0
+        self._configPath = "Quasar-X_" .. SafeConfigKey(opts.ConfigId or opts.Title or "default") .. ".json"
+        self._loadedFlags = {}
+        self._savedWindowState = nil
+        if self._autoLoad and typeof(readfile) == "function" then
+                local readOk, raw = pcall(readfile, self._configPath)
+                if readOk and type(raw) == "string" and raw ~= "" then
+                        local decodeOk, data = pcall(function() return HttpService:JSONDecode(raw) end)
+                        if decodeOk and type(data) == "table" then
+                                if type(data.Flags) == "table" then self._loadedFlags = data.Flags end
+                                self._savedWindowState = data.Window
+                        end
+                end
+        end
+        self.IconSource = "none"
+        self._conns = {}
+        self._tabs = {}
+        self._setters = {}
+        self._activeTab = nil
+        self._visible = true
+        self._maxed = false
+        self._mult = 1
+        self._targetScale = 1
+        self._rgbList = {}
+        self._orbits = {}
+        self._rgbOn = false
+        self._strokes = {}
+        self._shadows = {}
+        self._perfMode = tostring(opts.Performance or Library.Performance)
+        -- Auto dan Low mulai dengan efek nonaktif; Auto menyalakannya kembali setelah FPS stabil.
+        self._low = self._perfMode == "Low" or self._perfMode == "Auto"
+        PERF.low = self._low
+        self._rgbWanted = opts.RGB ~= false and Library.RGB ~= false
+
+        local panelT = math.clamp(opts.PanelTransparency or Library.PanelTransparency, 0, 0.7)
+        local cardT = math.clamp(opts.CardTransparency or Library.CardTransparency, 0, 0.8)
+        local fieldT = math.clamp(opts.FieldTransparency or Library.FieldTransparency, 0, 0.85)
+        self._cardT, self._fieldT = cardT, fieldT
+
+        -- Icon = false mematikan gambar ikon (tetap tampil huruf "X")
+        local icon = opts.Icon
+        if icon == nil then
+                icon = Library.DefaultIcon
+        end
+        local iconAsset, iconSource = nil, "none"
+        if icon then
+                iconAsset, iconSource = ResolveIcon(
+                        icon,
+                        opts.IconFile or Library.DefaultIconFile,
+                        opts.IconURL or Library.DefaultIconURL
+                )
+                self.IconSource = iconSource
+        end
+
+        LocalPlayer = Players.LocalPlayer
+        if not LocalPlayer then
+                warn("[Quasar-X] CreateWindow harus dipanggil dari sisi client (LocalPlayer belum tersedia).")
+                return nil
+        end
+        local parent = GetGuiParent()
+        if not parent then
+                warn("[Quasar-X] PlayerGui tidak tersedia.")
+                return nil
+        end
+        for i = #Library.Windows, 1, -1 do
+                local previous = Library.Windows[i]
+                if previous and previous.Title == self.Title then previous:Destroy() end
+        end
+        local guiName = "Quasar-X_" .. self.Title
+        local old = parent:FindFirstChild(guiName)
+        if old then
+                old:Destroy()
+        end
+
+        local gui = New("ScreenGui", {
+                Name = guiName,
+                ResetOnSpawn = false,
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+                DisplayOrder = 50,
+                IgnoreGuiInset = true,
+        })
+        local mounted = SetGuiParent(gui, parent)
+        if not mounted then
+                gui:Destroy()
+                warn("[Quasar-X] Executor tidak mengizinkan pemasangan ScreenGui ke PlayerGui.")
+                return nil
+        end
+        self.Gui = gui
+
+        local function track(conn)
+                return self:_track(conn)
+        end
+
+        --// Root (diskalakan & digeser) + bayangan tipis + panel utama
+        local root = New("Frame", {
+                Name = "Root",
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.fromOffset(MIN_W, WIN_H),
+                BackgroundTransparency = 1,
+                Parent = gui,
+        })
+        self.Root = root
+        self._scale = New("UIScale", { Scale = 1, Parent = root })
+
+        for _, sh in ipairs({ { 18, 0.9, 6 }, { 8, 0.8, 3 } }) do
+                table.insert(self._shadows, New("Frame", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        Position = UDim2.new(0.5, 0, 0.5, sh[3]),
+                        Size = UDim2.fromScale(1, 1),
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        Parent = root,
+                }, {
+                        Corner(16),
+                        New("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = sh[1], Transparency = sh[2] }),
+                }))
+        end
+
+        local main = New("Frame", {
+                Name = "Main",
+                Size = UDim2.fromScale(1, 1),
+                BackgroundColor3 = Theme.Panel,
+                BackgroundTransparency = panelT,
+                BorderSizePixel = 0,
+                ClipsDescendants = true,
+                Parent = root,
+        }, {
+                Corner(16),
+                self:_regStroke(OrbitStroke(1.6)),
+        })
+        self.Main = main
+
+        --// Header
+        local header = New("Frame", {
+                Name = "Header",
+                Size = UDim2.new(1, 0, 0, 56),
+                BackgroundTransparency = 1,
+                Parent = main,
+        })
+
+        local textX = 18
+        if iconAsset then
+                textX = 62
+                New("ImageLabel", {
+                        AnchorPoint = Vector2.new(0, 0.5),
+                        Position = UDim2.new(0, 16, 0.5, 0),
+                        Size = UDim2.fromOffset(34, 34),
+                        BackgroundColor3 = Color3.new(0, 0, 0),
+                        Image = iconAsset,
+                        ScaleType = Enum.ScaleType.Crop,
+                        Parent = header,
+                }, { Corner(0, 1), self:_regStroke(OrbitStroke(1.8)) })
+        end
+
+        local subParts = {}
+        if opts.SubTitle then
+                table.insert(subParts, tostring(opts.SubTitle))
+        end
+        if opts.Author then
+                table.insert(subParts, "by " .. tostring(opts.Author))
+        end
+        local subText = table.concat(subParts, "  |  ")
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(textX, subText ~= "" and 10 or 0),
+                Size = UDim2.new(1, -(textX + 136), 0, subText ~= "" and 21 or 56),
+                Font = FONT.Bold,
+                TextSize = 17,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = self.Title,
+                Parent = header,
+        })
+        if subText ~= "" then
+                New("TextLabel", {
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(textX, 31),
+                        Size = UDim2.new(1, -(textX + 136), 0, 16),
+                        Font = FONT.Regular,
+                        TextSize = 12,
+                        TextColor3 = Theme.SubText,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                        Text = subText,
+                        Parent = header,
+                })
+        end
+
+        HeaderButton(header, "close", -12, Theme.Red, function()
+                self:Destroy()
+                SafeCall(opts.OnClose)
+        end)
+        HeaderButton(header, "max", -52, Theme.Cyan, function()
+                self:SetMaximized(not self._maxed)
+        end)
+        HeaderButton(header, "min", -92, Theme.Blue, function()
+                self:Toggle(false)
+        end)
+
+        -- Garis pemisah header
+        New("Frame", {
+                Position = UDim2.fromOffset(0, 56),
+                Size = UDim2.new(1, 0, 0, 1),
+                BackgroundColor3 = Color3.new(1, 1, 1),
+                BorderSizePixel = 0,
+                Parent = main,
+        }, { Gradient(0, true) })
+
+        --// Sidebar (kartu)
+        local sidebar = New("Frame", {
+                Name = "Sidebar",
+                Position = UDim2.fromOffset(10, 67),
+                Size = UDim2.new(0, 168, 1, -77),
+                BackgroundColor3 = Theme.Card,
+                BackgroundTransparency = cardT,
+                BorderSizePixel = 0,
+                Parent = main,
+        }, {
+                Corner(12),
+                Stroke(Theme.Glow, 1, 0.72),
+        })
+        self._sidebar = sidebar
+
+        self._searchBox = New("TextBox", {
+                Position = UDim2.fromOffset(10, 10),
+                Size = UDim2.new(1, -20, 0, 36),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = fieldT,
+                PlaceholderText = "Search...",
+                PlaceholderColor3 = Theme.SubText,
+                Text = "",
+                ClearTextOnFocus = false,
+                Font = FONT.Regular,
+                TextSize = 13,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = sidebar,
+        }, {
+                Corner(10),
+                Pad(34, 0, 10, 0),
+                Stroke(Theme.Glow, 1, 0.7),
+        })
+        MagnifierIcon(self._searchBox, UDim2.new(0, -24, 0.5, 0))
+
+        self._tabList = New("ScrollingFrame", {
+                Position = UDim2.fromOffset(0, 54),
+                Size = UDim2.new(1, 0, 1, -122),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                ScrollBarThickness = 0,
+                CanvasSize = UDim2.new(),
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                Parent = sidebar,
+        }, {
+                New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+                Pad(10, 2, 10, 6),
+        })
+        self._tabLayout = self._tabList:FindFirstChildOfClass("UIListLayout")
+
+        -- Kartu profil di dasar sidebar
+        local profile = New("Frame", {
+                AnchorPoint = Vector2.new(0, 1),
+                Position = UDim2.new(0, 10, 1, -10),
+                Size = UDim2.new(1, -20, 0, 50),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = fieldT,
+                BorderSizePixel = 0,
+                Parent = sidebar,
+        }, {
+                Corner(10),
+                Stroke(Theme.Glow, 1, 0.7),
+        })
+        self._profile = profile
+        New("ImageLabel", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, 9, 0.5, 0),
+                Size = UDim2.fromOffset(34, 34),
+                BackgroundColor3 = Theme.Background,
+                Image = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", LocalPlayer.UserId),
+                Parent = profile,
+        }, { Corner(0, 1), Stroke(Theme.Blue, 1.5, 0.3) })
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(52, 8),
+                Size = UDim2.new(1, -58, 0, 18),
+                Font = FONT.Semi,
+                TextSize = 12,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = LocalPlayer.DisplayName,
+                Parent = profile,
+        })
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(52, 26),
+                Size = UDim2.new(1, -58, 0, 16),
+                Font = FONT.Regular,
+                TextSize = 11,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = "@" .. LocalPlayer.Name,
+                Parent = profile,
+        })
+
+        --// Area konten
+        self._content = New("Frame", {
+                Name = "Content",
+                Position = UDim2.fromOffset(188, 67),
+                Size = UDim2.new(1, -198, 1, -77),
+                BackgroundTransparency = 1,
+                ClipsDescendants = true,
+                Parent = main,
+        })
+
+        self._searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+                if self._activeTab then
+                        self._activeTab:_applySearch(self._searchBox.Text)
+                end
+        end)
+
+        --// Wadah notifikasi
+        self._notifyHolder = New("Frame", {
+                Name = "Notifications",
+                AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, -12, 0, 12),
+                Size = UDim2.new(0, 270, 1, -24),
+                BackgroundTransparency = 1,
+                Parent = gui,
+        }, {
+                New("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+        })
+        self._notifyOrder = 0
+
+        --// Tombol logo bulat (buka/tutup). Huruf "X" jadi cadangan di bawah gambar.
+        local iconSize = math.clamp(opts.IconSize or Library.IconSize, 40, 120)
+        local iconBtn = New("TextButton", {
+                Name = "ToggleIcon",
+                Size = UDim2.fromOffset(iconSize, iconSize),
+                Position = UDim2.new(0.5, -iconSize / 2, 0, 14),
+                BackgroundColor3 = Color3.new(0, 0, 0),
+                AutoButtonColor = false,
+                Text = "X",
+                Font = FONT.Bold,
+                TextSize = 30,
+                TextColor3 = Theme.Text,
+                ClipsDescendants = true,
+                Parent = gui,
+        }, {
+                Corner(0, 1),
+                self:_regStroke(OrbitStroke(3)),
+        })
+        if iconAsset then
+                local zoom = math.clamp(opts.IconZoom or Library.IconZoom, 1, 2)
+                local img = New("ImageLabel", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        Position = UDim2.fromScale(0.5, 0.5),
+                        Size = UDim2.fromScale(zoom, zoom),
+                        BackgroundTransparency = 1,
+                        Image = iconAsset,
+                        ScaleType = Enum.ScaleType.Crop,
+                        Parent = iconBtn,
+                })
+                if iconSource == "id" then
+                        -- URL GitHub hanya dicoba jika ID Decal belum berhasil dimuat.
+                        task.delay(1.5, function()
+                                if img.Parent and not img.IsLoaded then
+                                        LoadIconFromUrl(opts.IconURL or Library.DefaultIconURL, function(asset)
+                                                if img.Parent then
+                                                        img.Image = asset
+                                                        self.IconSource = "url"
+                                                end
+                                        end)
+                                end
+                        end)
+                end
+                task.delay(6, function()
+                        if img.Parent and not img.IsLoaded then
+                                warn("[Quasar-X] gambar ikon belum termuat (sumber: " .. tostring(self.IconSource or iconSource) .. ").")
+                        end
+                end)
+        end
+
+        local function getScale()
+                return self._scale.Scale
+        end
+        MakeDraggable(header, root, track, nil, getScale)
+        MakeDraggable(iconBtn, iconBtn, track, function()
+                self:Toggle()
+        end, nil)
+
+        --// Tombol keyboard (PC) & penyesuaian saat ukuran layar / orientasi berubah
+        local toggleKey = opts.ToggleKey or Enum.KeyCode.RightControl
+        track(UserInputService.InputBegan:Connect(function(input, processed)
+                if not processed and input.KeyCode == toggleKey then
+                        self:Toggle()
+                end
+        end))
+        local cameraConn
+        local function watchCamera()
+                if cameraConn then
+                        pcall(function() cameraConn:Disconnect() end)
+                        cameraConn = nil
+                end
+                local camera = workspace.CurrentCamera
+                if camera then
+                        cameraConn = track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+                                self:_layout()
+                        end))
+                end
+        end
+        watchCamera()
+        track(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+                watchCamera()
+                self:_layout()
+        end))
+
+        table.insert(Library.Windows, self)
+
+        self:SetScale(opts.Scale or "Medium")
+        if type(self._savedWindowState) == "table" then
+                if type(self._savedWindowState.Scale) == "number" then self:SetScale(self._savedWindowState.Scale) end
+                if self._savedWindowState.Maximized ~= nil then self:SetMaximized(self._savedWindowState.Maximized == true) end
+        end
+
+        self._rgbOn = self._rgbWanted and not self._low
+        self:_syncAll()
+        if self._perfMode == "Low" then
+                self:_applyPerf(true)
+        elseif self._perfMode == "Auto" then
+                self:_applyPerf(true) -- tampilkan panel dalam mode ringan sambil mengukur FPS
+                self:_probeFPS()
+        else
+                self:_applyPerf(false)
+        end
+        return self
+end
+
+function Window:_track(conn)
+        table.insert(self._conns, conn)
+        return conn
+end
+
+function Window:_flag(flag, value)
+        if flag then
+                self.Flags[flag] = value
+                self:_queueAutoSave()
+        end
+end
+
+function Window:_queueAutoSave()
+        if not self._autoSave or typeof(writefile) ~= "function" then return end
+        self._saveRevision += 1
+        local revision = self._saveRevision
+        task.delay(0.65, function()
+                if revision ~= self._saveRevision or not self._autoSave then return end
+                local payload = { Version = 1, Flags = self.Flags, Window = { Scale = self._mult, Maximized = self._maxed } }
+                local encodeOk, encoded = pcall(function() return HttpService:JSONEncode(payload) end)
+                if encodeOk and type(encoded) == "string" then pcall(writefile, self._configPath, encoded) end
+        end)
+end
+
+function Window:_registerFlag(flag, setter)
+        if not flag or type(setter) ~= "function" then return end
+        self._setters[flag] = setter
+        local saved = self._loadedFlags[flag]
+        if saved ~= nil then
+                local ok = pcall(setter, saved)
+                if ok then self.Flags[flag] = saved end
+        end
+end
+
+-- Layout adaptif: lebar panel mengikuti layar (bukan sekadar mengecilkan semuanya),
+-- sidebar menyempit di layar sempit, dan panel selalu muat di layar.
+function Window:_layout()
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(800, 400)
+        local maxed = self._maxed
+        local mobile = vp.X <= 620
+        local baseHeight = mobile and MOBILE_H or WIN_H
+        local mult = math.clamp(self._mult or 1, 0.5, 1.5)
+        local fitH = vp.Y * (maxed and 0.94 or 0.88) / (baseHeight * mult)
+        local fitW = vp.X * (maxed and 0.98 or 0.96) / (MIN_W * mult)
+        local s = math.min(fitH, fitW, (maxed and 1.4 or 1.15) / mult)
+        local targetScale = math.clamp(s * mult, 0.35, 1.8)
+        local W = mobile and MIN_W or math.clamp(vp.X * (maxed and 0.96 or 0.66) / math.max(targetScale, 0.01), MIN_W, maxed and 960 or MAX_W)
+        local sbW = W < 560 and 148 or 168
+
+        self.Root.Size = UDim2.fromOffset(W, baseHeight)
+        self._sidebar.Position = UDim2.fromOffset(10, 67)
+        if mobile then
+                -- Navigasi horizontal memberi ruang konten penuh pada layar sentuh yang sempit.
+                self._sidebar.Size = UDim2.new(1, -20, 0, 86)
+                self._searchBox.Position = UDim2.fromOffset(10, 6)
+                self._searchBox.Size = UDim2.new(1, -20, 0, 32)
+                self._searchBox.Visible = true
+                self._tabList.Position = UDim2.fromOffset(0, 42)
+                self._tabList.Size = UDim2.new(1, 0, 0, 42)
+                self._tabList.ScrollingDirection = Enum.ScrollingDirection.X
+                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.X
+                self._tabLayout.FillDirection = Enum.FillDirection.Horizontal
+                for _, tab in ipairs(self._tabs) do
+                        tab.Button.Size = UDim2.fromOffset(116, 38)
+                end
+                self._profile.Visible = false
+                self._content.Position = UDim2.fromOffset(10, 159)
+                self._content.Size = UDim2.new(1, -20, 1, -169)
+        else
+                self._sidebar.Size = UDim2.new(0, sbW, 1, -77)
+                self._searchBox.Position = UDim2.fromOffset(10, 10)
+                self._searchBox.Size = UDim2.new(1, -20, 0, 36)
+                self._searchBox.Visible = true
+                self._tabList.Position = UDim2.fromOffset(0, 54)
+                self._tabList.Size = UDim2.new(1, 0, 1, -122)
+                self._tabList.ScrollingDirection = Enum.ScrollingDirection.Y
+                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                self._tabLayout.FillDirection = Enum.FillDirection.Vertical
+                for _, tab in ipairs(self._tabs) do
+                        tab.Button.Size = UDim2.new(1, 0, 0, 42)
+                end
+                self._profile.Visible = true
+                self._content.Position = UDim2.fromOffset(sbW + 20, 67)
+                self._content.Size = UDim2.new(1, -(sbW + 30), 1, -77)
+        end
+        self._mobileLayout = mobile
+        self._notifyHolder.Size = UDim2.new(0, math.max(150, math.min(270, vp.X - 24)), 1, -24)
+
+        self._targetScale = targetScale
+        if self._visible then
+                self._scale.Scale = self._targetScale
+        end
+        ClampToScreen(self.Root, function()
+                return self._scale.Scale
+        end)
+end
+
+-- v = "Small" / "Medium" / "Large" atau angka pengali.
+function Window:SetScale(v)
+        local mult = type(v) == "number" and v or SCALES[v]
+        if type(mult) == "number" and mult == mult and mult > 0 and mult < math.huge then
+                self._mult = math.clamp(mult, 0.5, 1.5)
+        end
+        self:_layout()
+        self:_queueAutoSave()
+end
+
+function Window:SetMaximized(on)
+        self._maxed = on and true or false
+        if self._closePopup then
+                self._closePopup()
+        end
+        self:_layout()
+        self:_queueAutoSave()
+end
+
+-- Buka/tutup dengan animasi skala singkat.
+function Window:Toggle(state)
+        if state == nil then
+                state = not self._visible
+        end
+        if state == self._visible then
+                return
+        end
+        self._visible = state
+        self:_syncAll()
+        if not state and self._closePopup then
+                self._closePopup()
+        end
+        local target = self._targetScale
+        if state then
+                self.Root.Visible = true
+                self._scale.Scale = target * 0.92
+                Tween(self._scale, 0.22, { Scale = target }, Enum.EasingStyle.Back)
+        else
+                Tween(self._scale, 0.14, { Scale = target * 0.94 })
+                task.delay(0.14, function()
+                        if not self._visible and self.Root and self.Root.Parent then
+                                self.Root.Visible = false
+                        end
+                end)
+        end
+end
+
+function Window:Destroy()
+        if self._closePopup then pcall(self._closePopup) end
+        for _, e in ipairs(self._rgbList) do
+                if e.tween then pcall(function() e.tween:Cancel() end) end
+        end
+        self._rgbList = {}
+        for _, e in ipairs(self._orbits) do
+                if e.tween then pcall(function() e.tween:Cancel() end) end
+        end
+        self._orbits = {}
+        for _, conn in ipairs(self._conns) do
+                pcall(function()
+                        conn:Disconnect()
+                end)
+        end
+        self._conns = {}
+        if self.Gui then
+                self.Gui:Destroy()
+                self.Gui = nil
+        end
+        for i, w in ipairs(Library.Windows) do
+                if w == self then
+                        table.remove(Library.Windows, i)
+                        break
+                end
+        end
+        if #Library.Windows == 0 then
+                PERF.low = false
+        end
+end
+
+function Window:Notify(o)
+        o = o or {}
+        self._notifyOrder += 1
+        local card = New("Frame", {
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundColor3 = Theme.Card,
+                BorderSizePixel = 0,
+                LayoutOrder = self._notifyOrder,
+                Parent = self._notifyHolder,
+        }, {
+                Corner(12),
+                Stroke(Theme.Border, 1, 0),
+        })
+        New("Frame", {
+                Size = UDim2.new(0, 3, 1, -16),
+                Position = UDim2.fromOffset(8, 8),
+                BackgroundColor3 = Theme.Blue,
+                BorderSizePixel = 0,
+                Parent = card,
+        }, { Corner(2) })
+        local body = New("Frame", {
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1,
+                Parent = card,
+        }, {
+                Pad(24, 11, 14, 11),
+                New("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+        })
+        New("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1,
+                Font = FONT.Semi,
+                TextSize = 14,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextWrapped = true,
+                Text = tostring(o.Title or "Notifikasi"),
+                LayoutOrder = 1,
+                Parent = body,
+        })
+        if o.Content then
+                New("TextLabel", {
+                        Size = UDim2.new(1, 0, 0, 0),
+                        AutomaticSize = Enum.AutomaticSize.Y,
+                        BackgroundTransparency = 1,
+                        Font = FONT.Regular,
+                        TextSize = 12,
+                        TextColor3 = Theme.SubText,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextWrapped = true,
+                        Text = tostring(o.Content),
+                        LayoutOrder = 2,
+                        Parent = body,
+                })
+        end
+
+        -- Muncul & hilang dengan fade halus
+        local labels = {}
+        for _, d in ipairs(body:GetChildren()) do
+                if d:IsA("TextLabel") then
+                        table.insert(labels, d)
+                        d.TextTransparency = 1
+                end
+        end
+        card.BackgroundTransparency = 1
+        Tween(card, 0.22, { BackgroundTransparency = 0.05 })
+        for _, l in ipairs(labels) do
+                Tween(l, 0.22, { TextTransparency = 0 })
+        end
+        local duration = tonumber(o.Duration) or 4
+        if duration ~= duration or duration == math.huge or duration == -math.huge then duration = 4 end
+        duration = math.clamp(duration, 0.5, 30)
+        task.delay(duration, function()
+                if not (card and card.Parent) then
+                        return
+                end
+                Tween(card, 0.25, { BackgroundTransparency = 1 })
+                for _, l in ipairs(labels) do
+                        if l.Parent then
+                                Tween(l, 0.25, { TextTransparency = 1 })
+                        end
+                end
+                task.delay(0.27, function()
+                        if card and card.Parent then
+                                card:Destroy()
+                        end
+                end)
+        end)
+end
+
+function Window:_select(tab)
+        if self._closePopup then
+                self._closePopup()
+        end
+        local changed = self._activeTab ~= tab
+        local activeT = math.max(self._fieldT - 0.1, 0.05)
+        for _, t in ipairs(self._tabs) do
+                local active = (t == tab)
+                t.Page.Visible = active
+                Tween(t.Button, 0.15, { BackgroundTransparency = active and activeT or 1 })
+                t._indicator.Visible = active
+                if t._rgbEntry then
+                        t._rgbEntry.active = active
+                        self:_syncRGB(t._rgbEntry)
+                end
+                t._label.TextColor3 = active and Theme.Text or Theme.SubText
+                t._badgeGrad.Enabled = active
+                t._badge.BackgroundColor3 = active and Color3.new(1, 1, 1) or Theme.Secondary
+                t._badgeLbl.TextColor3 = active and Color3.new(1, 1, 1) or Theme.SubText
+                if t._icon then
+                        t._icon.ImageColor3 = active and Color3.new(1, 1, 1) or Theme.SubText
+                end
+        end
+        self._activeTab = tab
+        if changed then
+                tab.Page.Position = UDim2.fromOffset(18, 0)
+                Tween(tab.Page, 0.2, { Position = UDim2.fromOffset(0, 0) })
+        end
+        tab:_applySearch(self._searchBox.Text)
+end
+
+function Window:AddTab(opts)
+        if type(opts) == "string" then
+                opts = { Name = opts }
+        end
+        opts = opts or {}
+
+        local tab = setmetatable({}, Tab)
+        tab.Window = self
+        tab.Name = tostring(opts.Name or "Tab")
+        tab._items = {}
+        tab._sections = {}
+        tab._currentSection = nil
+        tab._order = 1
+
+        tab.Button = New("TextButton", {
+                Size = self._mobileLayout and UDim2.fromOffset(116, 38) or UDim2.new(1, 0, 0, 42),
+                BackgroundColor3 = Theme.Hover,
+                BackgroundTransparency = 1,
+                Text = "",
+                AutoButtonColor = false,
+                LayoutOrder = #self._tabs + 1,
+                Parent = self._tabList,
+        }, { Corner(10) })
+
+        tab._indicator = New("Frame", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, 0, 0.5, 0),
+                Size = UDim2.fromOffset(3, 20),
+                BackgroundColor3 = Theme.Blue,
+                BorderSizePixel = 0,
+                Visible = false,
+                Parent = tab.Button,
+        }, { Corner(2) })
+
+        -- Lencana ikon: hanya tampil kalau Icon diberikan; tanpa Icon tab berupa teks saja
+        tab._badge = New("Frame", {
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, 12, 0.5, 0),
+                Size = UDim2.fromOffset(26, 26),
+                BackgroundColor3 = Theme.Secondary,
+                BorderSizePixel = 0,
+                Visible = opts.Icon ~= nil,
+                Parent = tab.Button,
+        }, { Corner(8) })
+        tab._badgeGrad = Gradient(45)
+        tab._badgeGrad.Enabled = false
+        tab._badgeGrad.Parent = tab._badge
+        tab._badgeLbl = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.fromScale(1, 1),
+                Font = FONT.Bold,
+                TextSize = 13,
+                TextColor3 = Theme.SubText,
+                Text = "",
+                Parent = tab._badge,
+        })
+        if opts.Icon then
+                tab._icon = New("ImageLabel", {
+                        AnchorPoint = Vector2.new(0.5, 0.5),
+                        Position = UDim2.fromScale(0.5, 0.5),
+                        Size = UDim2.fromOffset(16, 16),
+                        BackgroundTransparency = 1,
+                        Image = ToAsset(opts.Icon),
+                        ImageColor3 = Theme.SubText,
+                        Parent = tab._badge,
+                })
+        end
+
+        tab._label = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(opts.Icon and 48 or 16, 0),
+                Size = UDim2.new(1, opts.Icon and -54 or -22, 1, 0),
+                Font = FONT.Semi,
+                TextSize = 14,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = tab.Name,
+                Parent = tab.Button,
+        })
+
+        tab.Page = New("ScrollingFrame", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                ScrollBarThickness = 3,
+                ScrollBarImageColor3 = Theme.Blue,
+                CanvasSize = UDim2.new(),
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                ScrollingDirection = Enum.ScrollingDirection.Y,
+                Visible = false,
+                Parent = self._content,
+        }, {
+                New("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+                Pad(0, 0, 8, 12),
+        })
+
+        tab.Button.MouseButton1Click:Connect(function()
+                self:_select(tab)
+        end)
+
+        table.insert(self._tabs, tab)
+        if #self._tabs == 1 then
+                self:_select(tab)
+        end
+        return tab
+end
+
+--// ===== 5. Cahaya berputar & performa =====
+
+-- Kompatibilitas script lama (tanpa efek):
+function Window:_reg(grad, active)
+        return { grad = grad, active = active }
+end
+
+function Window:_regGrad(grad)
+        return grad
+end
+
+function Window:_regControl()
+        return nil
+end
+
+function Window:_syncRGB() end
+
+-- Cahaya merah-putih berputar di tepi panel. Diputar oleh TweenService (engine), bukan loop Lua,
+-- dan berhenti saat panel disembunyikan atau mode hemat aktif.
+function Window:_regStroke(stroke)
+        local grad = stroke:FindFirstChildOfClass("UIGradient")
+        if grad then
+                local e = { grad = grad, tween = nil }
+                table.insert(self._orbits, e)
+                task.defer(function()
+                        if self.Gui then
+                                self:_syncOrbit(e)
+                        end
+                end)
+        end
+        return stroke
+end
+
+function Window:_syncOrbit(e)
+        if e.tween then
+                pcall(function() e.tween:Cancel() end)
+                e.tween = nil
+        end
+        if self._rgbOn and self._visible and e.grad and e.grad.Parent then
+                e.grad.Rotation = 0
+                local ok, tween = pcall(function()
+                        return TweenService:Create(
+                                e.grad,
+                                TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+                                { Rotation = 360 }
+                        )
+                end)
+                if ok and tween then
+                        e.tween = tween
+                        pcall(function() tween:Play() end)
+                else
+                        e.grad.Rotation = 45
+                end
+        elseif e.grad and e.grad.Parent then
+                e.grad.Rotation = 45
+        end
+end
+
+function Window:_syncAll()
+        for _, e in ipairs(self._orbits) do
+                self:_syncOrbit(e)
+        end
+end
+
+-- Hidupkan / matikan cahaya berputar (mode hemat tetap mematikannya).
+function Window:SetRGB(on)
+        self._rgbWanted = on and true or false
+        self._rgbOn = self._rgbWanted and not self._low
+        self:_syncAll()
+end
+
+-- mode: "Auto" (deteksi FPS) / "High" / "Low" (HP kentang: tanpa cahaya berputar, animasi, bayangan, garis tipis)
+function Window:SetPerformance(mode)
+        mode = tostring(mode or "Auto")
+        self._perfMode = mode
+        if mode == "Auto" then
+                self:_applyPerf(true)
+                self:_probeFPS()
+        else
+                self:_applyPerf(mode == "Low")
+        end
+end
+
+function Window:_applyPerf(low)
+        self._low = low
+        PERF.low = low
+        self._rgbOn = self._rgbWanted and not low
+        for _, sh in ipairs(self._shadows) do
+                sh.Visible = not low
+        end
+        for _, st in ipairs(self._strokes) do
+                st.Enabled = not low
+        end
+        self:_syncAll()
+end
+
+-- Ukur FPS ~1,5 detik; di bawah 32 FPS otomatis masuk mode hemat.
+function Window:_probeFPS()
+        if self._probing then
+                return
+        end
+        self._probing = true
+        task.spawn(function()
+                task.wait(1)
+                local frames = 0
+                local t0 = os.clock()
+                local conn = RunService.Heartbeat:Connect(function()
+                        frames += 1
+                end)
+                task.wait(1.5)
+                conn:Disconnect()
+                self._probing = false
+                if not self.Gui then
+                        return
+                end
+                local fps = frames / math.max(os.clock() - t0, 0.1)
+                self.FPS = fps
+                if self._perfMode == "Auto" then
+                        local low = fps < 32
+                        if low ~= self._low then
+                                self:_applyPerf(low)
+                                if low then
+                                        self:Notify({
+                                                Title = "Mode hemat aktif",
+                                                Content = string.format("FPS rendah (%d). Efek berat dimatikan.", math.floor(fps)),
+                                                Duration = 4,
+                                        })
+                                end
+                        end
+                end
+        end)
+end
+
+--// ===== 6. Tab + komponen =====
+
+function Tab:_row(height, searchText)
+        local rowStroke = Stroke(Theme.Glow, 1, 0.72)
+        table.insert(self.Window._strokes, rowStroke)
+        rowStroke.Enabled = not self.Window._low
+        local row = New("Frame", {
+                Size = UDim2.new(1, 0, 0, height),
+                BackgroundColor3 = Theme.Card,
+                BackgroundTransparency = self.Window._cardT,
+                BorderSizePixel = 0,
+                LayoutOrder = self._order,
+                Parent = self.Page,
+        }, {
+                Corner(10),
+                rowStroke,
+        })
+        self._order += 1
+        table.insert(self._items, {
+                Frame = row,
+                Text = string.lower(tostring(searchText or "")),
+                Section = self._currentSection,
+        })
+        return row
+end
+
+-- Judul dua tingkat: teks utama + deskripsi sekunder.
+-- scaleW (opsional): lebar judul sebagai proporsi baris, untuk kontrol yang melebar-menyempit.
+function Tab:_title(row, name, desc, rightInset, scaleW)
+        local wScale = scaleW or 1
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, desc and 8 or 0),
+                Size = desc and UDim2.new(wScale, rightInset, 0, 20) or UDim2.new(wScale, rightInset, 1, 0),
+                Font = FONT.Semi,
+                TextSize = 14,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = tostring(name),
+                Parent = row,
+        })
+        if desc then
+                New("TextLabel", {
+                        BackgroundTransparency = 1,
+                        Position = UDim2.fromOffset(14, 29),
+                        Size = UDim2.new(wScale, rightInset, 0, 16),
+                        Font = FONT.Regular,
+                        TextSize = 12,
+                        TextColor3 = Theme.SubText,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                        Text = tostring(desc),
+                        Parent = row,
+                })
+        end
+end
+
+function Tab:_applySearch(query)
+        local q = string.lower(query or "")
+        local visibleSections = {}
+        for _, item in ipairs(self._items) do
+                local vis = q == ""
+                        or string.find(item.Text, q, 1, true) ~= nil
+                        or (item.Section ~= nil and string.find(item.Section.Text, q, 1, true) ~= nil)
+                item.Frame.Visible = vis
+                if vis and item.Section then
+                        visibleSections[item.Section] = true
+                end
+        end
+        for _, sec in ipairs(self._sections) do
+                sec.Frame.Visible = q == "" or visibleSections[sec] == true
+        end
+end
+
+function Tab:AddSection(name)
+        local holder = New("Frame", {
+                Size = UDim2.new(1, 0, 0, 26),
+                BackgroundTransparency = 1,
+                LayoutOrder = self._order,
+                Parent = self.Page,
+        })
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(2, 2),
+                Size = UDim2.new(1, -2, 1, 0),
+                Font = FONT.Bold,
+                TextSize = 15,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = tostring(name),
+                Parent = holder,
+        })
+        self._order += 1
+        local sec = { Frame = holder, Text = string.lower(tostring(name)) }
+        table.insert(self._sections, sec)
+        self._currentSection = sec
+end
+
+function Tab:AddLabel(text, height)
+        local row = self:_row(height or 38, text)
+        local lbl = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, 0),
+                Size = UDim2.new(1, -28, 1, 0),
+                Font = FONT.Regular,
+                TextSize = 12,
+                TextWrapped = true,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = tostring(text),
+                Parent = row,
+        })
+        local obj = {}
+        function obj:Set(t)
+                lbl.Text = tostring(t)
+        end
+        return obj
+end
+
+function Tab:AddButton(o)
+        o = o or {}
+        local hasDesc = o.Desc ~= nil and o.Desc ~= ""
+        local row = self:_row(hasDesc and 58 or 50, tostring(o.Name or "") .. " " .. tostring(o.Desc or ""))
+        self:_title(row, o.Name or "Button", hasDesc and o.Desc or nil, -132)
+
+        -- Chip aksi di kanan: garis gradasi biru -> merah, terisi gradasi saat ditekan
+        local chip = New("Frame", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -12, 0.5, 0),
+                Size = UDim2.fromOffset(100, 34),
+                BackgroundTransparency = 1,
+                Parent = row,
+        }, {
+                Corner(10),
+                GradStroke(1.5, 0, 0.1),
+        })
+        local fill = New("Frame", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundColor3 = Color3.new(1, 1, 1),
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Parent = chip,
+        }, { Corner(10), Gradient(0) })
+        New("TextLabel", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Font = FONT.Semi,
+                TextSize = 13,
+                TextColor3 = Theme.Text,
+                Text = tostring(o.Text or "Jalankan"),
+                Parent = chip,
+        })
+
+        local btn = New("TextButton", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text = "",
+                Parent = row,
+        })
+        Pressable(btn, row, Theme.Card, Theme.Hover)
+        btn.MouseButton1Down:Connect(function()
+                Tween(fill, 0.08, { BackgroundTransparency = 0.25 })
+        end)
+        local function release()
+                Tween(fill, 0.2, { BackgroundTransparency = 1 })
+        end
+        btn.MouseButton1Up:Connect(release)
+        btn.MouseLeave:Connect(release)
+        btn.MouseButton1Click:Connect(function()
+                SafeCall(o.Callback)
+        end)
+        local obj = {}
+        function obj:Fire()
+                SafeCall(o.Callback)
+        end
+        return obj
+end
+
+function Tab:AddToggle(o)
+        o = o or {}
+        local window = self.Window
+        local hasDesc = o.Desc ~= nil and o.Desc ~= ""
+        local row = self:_row(hasDesc and 56 or 48, tostring(o.Name or "") .. " " .. tostring(o.Desc or ""))
+        self:_title(row, o.Name or "Toggle", hasDesc and o.Desc or nil, -76)
+
+        local switch = New("Frame", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -14, 0.5, 0),
+                Size = UDim2.fromOffset(46, 26),
+                BackgroundColor3 = Theme.Off,
+                BorderSizePixel = 0,
+                Parent = row,
+        }, { Corner(0, 1) })
+        local knob = New("Frame", {
+                Position = UDim2.fromOffset(3, 3),
+                Size = UDim2.fromOffset(20, 20),
+                BackgroundColor3 = Theme.Soft,
+                BorderSizePixel = 0,
+                Parent = switch,
+        }, { Corner(0, 1) })
+        local btn = New("TextButton", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text = "",
+                Parent = row,
+        })
+        Pressable(btn, row, Theme.Card, Theme.Hover)
+
+        local value = o.Default == true
+        local function render(animate)
+                local pos = value and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3)
+                local col = value and Theme.Blue or Theme.Off
+                if animate then
+                        Tween(knob, 0.18, { Position = pos }, Enum.EasingStyle.Back)
+                        Tween(switch, 0.16, { BackgroundColor3 = col })
+                else
+                        knob.Position = pos
+                        switch.BackgroundColor3 = col
+                end
+        end
+
+        local obj = {}
+        function obj:Set(v, silent)
+                value = v and true or false
+                render(true)
+                window:_flag(o.Flag, value)
+                if not silent then
+                        SafeCall(o.Callback, value)
+                end
+        end
+        function obj:Get()
+                return value
+        end
+
+        btn.MouseButton1Click:Connect(function()
+                obj:Set(not value)
+        end)
+
+        render(false)
+        window:_flag(o.Flag, value)
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(v) obj:Set(v, true) end)
+        end
+        if value then
+                task.defer(SafeCall, o.Callback, value)
+        end
+        return obj
+end
+
+function Tab:AddSlider(o)
+        o = o or {}
+        local window = self.Window
+        local function finiteNumber(value, fallback)
+                local n = tonumber(value)
+                if not n or n ~= n or n == math.huge or n == -math.huge then return fallback end
+                return n
+        end
+        local min = finiteNumber(o.Min, 0)
+        local max = finiteNumber(o.Max, 100)
+        if max < min then min, max = max, min end
+        local inc = math.abs(finiteNumber(o.Increment, 1))
+        if inc < 0.0001 then inc = 1 end
+        local suffix = tostring(o.Suffix or "")
+        local span = max - min
+
+        local function snap(v)
+                v = finiteNumber(v, min)
+                if span <= 0 then return min end
+                local steps = math.floor((v - min) / inc + 0.5)
+                local snapped = math.clamp(min + steps * inc, min, max)
+                return tonumber(string.format("%.4f", snapped)) or min
+        end
+
+        local defaultValue = o.Default
+        if defaultValue == nil then defaultValue = min end
+        local value = snap(defaultValue)
+        local row = self:_row(64, o.Name or "")
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, 9),
+                Size = UDim2.new(1, -120, 0, 20),
+                Font = FONT.Semi,
+                TextSize = 14,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = tostring(o.Name or "Slider"),
+                Parent = row,
+        })
+        local valLbl = New("TextLabel", {
+                AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, -14, 0, 9),
+                Size = UDim2.fromOffset(100, 20),
+                BackgroundTransparency = 1,
+                Font = FONT.Bold,
+                TextSize = 13,
+                TextColor3 = Theme.Cyan,
+                TextXAlignment = Enum.TextXAlignment.Right,
+                Text = "",
+                Parent = row,
+        })
+        local track = New("Frame", {
+                Position = UDim2.fromOffset(14, 44),
+                Size = UDim2.new(1, -28, 0, 6),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = 0.1,
+                BorderSizePixel = 0,
+                Parent = row,
+        }, { Corner(0, 1) })
+        local fill = New("Frame", {
+                Size = UDim2.fromScale(0, 1),
+                BackgroundColor3 = Theme.Blue,
+                BorderSizePixel = 0,
+                Parent = track,
+        }, { Corner(0, 1) })
+        local thumb = New("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.fromScale(0, 0.5),
+                Size = UDim2.fromOffset(18, 18),
+                BackgroundColor3 = Theme.Soft,
+                BorderSizePixel = 0,
+                Parent = track,
+        }, { Corner(0, 1), Stroke(Theme.Blue, 2, 0) })
+        local hit = New("TextButton", {
+                Position = UDim2.fromOffset(0, 24),
+                Size = UDim2.new(1, 0, 0, 40),
+                BackgroundTransparency = 1,
+                Text = "",
+                Parent = row,
+        })
+
+        local obj = {}
+        function obj:Set(v, silent)
+                value = snap(v)
+                local rel = span > 0 and math.clamp((value - min) / span, 0, 1) or 0
+                fill.Size = UDim2.fromScale(rel, 1)
+                thumb.Position = UDim2.fromScale(rel, 0.5)
+                valLbl.Text = tostring(value) .. suffix
+                window:_flag(o.Flag, value)
+                if not silent then SafeCall(o.Callback, value) end
+        end
+        function obj:Get()
+                return value
+        end
+
+        local dragging = false
+        local wasScrolling = true
+        local page = self.Page
+        local function fromX(x)
+                local width = math.max(track.AbsoluteSize.X, 1)
+                local rel = math.clamp((x - track.AbsolutePosition.X) / width, 0, 1)
+                local nextValue = snap(min + span * rel)
+                if nextValue ~= value then obj:Set(nextValue) end
+        end
+        local function setThumb(big)
+                Tween(thumb, 0.12, { Size = big and UDim2.fromOffset(22, 22) or UDim2.fromOffset(18, 18) })
+        end
+        hit.InputBegan:Connect(function(input)
+                if IsPress(input) then
+                        dragging = true
+                        wasScrolling = page.ScrollingEnabled
+                        page.ScrollingEnabled = false
+                        setThumb(true)
+                        fromX(input.Position.X)
+                end
+        end)
+        window:_track(UserInputService.InputChanged:Connect(function(input)
+                if dragging and IsMove(input) then fromX(input.Position.X) end
+        end))
+        window:_track(UserInputService.InputEnded:Connect(function(input)
+                if dragging and IsPress(input) then
+                        dragging = false
+                        page.ScrollingEnabled = wasScrolling
+                        setThumb(false)
+                end
+        end))
+
+        obj:Set(value, true)
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(v) obj:Set(v, true) end)
+        end
+        task.defer(SafeCall, o.Callback, value)
+        return obj
+end
+
+function Tab:AddInput(o)
+        o = o or {}
+        local window = self.Window
+        local row = self:_row(52, o.Name or "")
+        self:_title(row, o.Name or "Input", nil, -14, 0.52)
+
+        local box = New("TextBox", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -12, 0.5, 0),
+                Size = UDim2.new(0.44, 0, 0, 34),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = window._fieldT,
+                Font = FONT.Regular,
+                TextSize = 13,
+                TextColor3 = Theme.Text,
+                PlaceholderText = tostring(o.Placeholder or "..."),
+                PlaceholderColor3 = Theme.SubText,
+                Text = "",
+                ClearTextOnFocus = false,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Parent = row,
+        }, {
+                Corner(9),
+                Pad(12, 0, 12, 0),
+                Stroke(Theme.Glow, 1, 0.65),
+                New("UISizeConstraint", { MinSize = Vector2.new(110, 34), MaxSize = Vector2.new(200, 34) }),
+        })
+        local boxStroke = box:FindFirstChildOfClass("UIStroke")
+        box.Focused:Connect(function()
+                Tween(boxStroke, 0.15, { Color = Theme.Blue, Transparency = 0 })
+        end)
+
+        local value = ""
+        local obj = {}
+        function obj:Set(v, silent)
+                local text = tostring(v == nil and "" or v)
+                if o.Numeric then
+                        local n = tonumber(text)
+                        if n == nil or n ~= n or n == math.huge or n == -math.huge then
+                                box.Text = tostring(value)
+                                return
+                        end
+                        if o.Min ~= nil then
+                                local lower = tonumber(o.Min)
+                                if lower then n = math.max(n, lower) end
+                        end
+                        if o.Max ~= nil then
+                                local upper = tonumber(o.Max)
+                                if upper then n = math.min(n, upper) end
+                        end
+                        value = n
+                        box.Text = tostring(n)
+                else
+                        value = text
+                        box.Text = text
+                end
+                window:_flag(o.Flag, value)
+                if not silent then
+                        SafeCall(o.Callback, value)
+                end
+        end
+        function obj:Get()
+                return value
+        end
+
+        box.FocusLost:Connect(function()
+                Tween(boxStroke, 0.15, { Color = Theme.Glow, Transparency = 0.65 })
+                obj:Set(box.Text)
+        end)
+
+        if o.Default ~= nil then
+                obj:Set(o.Default, true)
+        end
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(v) obj:Set(v, true) end)
+        end
+        return obj
+end
+
+-- Keybind keyboard: klik chip untuk merekam tombol, tekan tombol untuk menjalankan callback.
+function Tab:AddKeybind(o)
+        o = o or {}
+        local window = self.Window
+        local row = self:_row(52, tostring(o.Name or "") .. " " .. tostring(o.Desc or ""))
+        self:_title(row, o.Name or "Keybind", o.Desc, -14, 0.52)
+
+        local function normalizeKey(value)
+                if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then
+                        return value
+                end
+                local name = tostring(value or "Unknown"):gsub("^Enum%.KeyCode%.", "")
+                local ok, result = pcall(function()
+                        return Enum.KeyCode[name]
+                end)
+                if ok and result then
+                        return result
+                end
+                return Enum.KeyCode.Unknown
+        end
+
+        local key = normalizeKey(o.Default or o.Key)
+        local listening = false
+        local chip = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -12, 0.5, 0),
+                Size = UDim2.fromOffset(104, 34),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = window._fieldT,
+                AutoButtonColor = false,
+                Font = FONT.Semi,
+                TextSize = 12,
+                TextColor3 = Theme.Cyan,
+                Text = key == Enum.KeyCode.Unknown and "None" or key.Name,
+                Parent = row,
+        }, { Corner(9), Stroke(Theme.Glow, 1, 0.55) })
+
+        local function refresh()
+                chip.Text = listening and "Press key..." or (key == Enum.KeyCode.Unknown and "None" or key.Name)
+                chip.TextColor3 = listening and Theme.Text or Theme.Cyan
+                chip.BackgroundColor3 = listening and Theme.Hover or Theme.Secondary
+        end
+
+        local obj = {}
+        function obj:Get()
+                return key
+        end
+        function obj:Set(value, silent)
+                key = normalizeKey(value)
+                listening = false
+                refresh()
+                window:_flag(o.Flag, key.Name)
+                if not silent then
+                        SafeCall(o.Changed, key)
+                end
+        end
+        function obj:Capture()
+                listening = true
+                refresh()
+        end
+        function obj:Clear()
+                self:Set(Enum.KeyCode.Unknown)
+        end
+
+        chip.MouseButton1Click:Connect(function()
+                listening = not listening
+                refresh()
+        end)
+        window:_track(UserInputService.InputBegan:Connect(function(input, processed)
+                if processed or not window.Gui then
+                        return
+                end
+                if listening then
+                        if input.KeyCode ~= Enum.KeyCode.Unknown then
+                                obj:Set(input.KeyCode)
+                        end
+                        return
+                end
+                if key ~= Enum.KeyCode.Unknown and input.KeyCode == key then
+                        SafeCall(o.Callback, key)
+                end
+        end))
+
+        window:_flag(o.Flag, key.Name)
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(value) obj:Set(value, true) end)
+        end
+        return obj
+end
+
+function Tab:AddDropdown(o)
+        o = o or {}
+        local window = self.Window
+        local main = window.Main
+        local multi = o.Multi == true
+        local OPT_H, MAX_VISIBLE = 38, 5
+
+        local options = {}
+        for _, v in ipairs(o.Options or {}) do
+                table.insert(options, tostring(v))
+        end
+        local single = nil
+        local set = {}
+        local open = false
+        local entries = {}
+        local popup, blocker
+
+        local row = self:_row(52, o.Name or "")
+        self:_title(row, o.Name or "Dropdown", nil, -14, 0.52)
+
+        local valueBox = New("Frame", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -12, 0.5, 0),
+                Size = UDim2.new(0.44, 0, 0, 34),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = window._fieldT,
+                BorderSizePixel = 0,
+                Parent = row,
+        }, {
+                Corner(9),
+                Stroke(Theme.Glow, 1, 0.65),
+                New("UISizeConstraint", { MinSize = Vector2.new(116, 34), MaxSize = Vector2.new(200, 34) }),
+        })
+        local valueLbl = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(12, 0),
+                Size = UDim2.new(1, -36, 1, 0),
+                Font = FONT.Medium,
+                TextSize = 13,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = "None",
+                Parent = valueBox,
+        })
+        -- Panah berputar 180 derajat saat dropdown terbuka
+        local arrow = New("TextLabel", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(1, -16, 0.5, 0),
+                Size = UDim2.fromOffset(14, 14),
+                BackgroundTransparency = 1,
+                Font = FONT.Bold,
+                TextSize = 12,
+                TextColor3 = Theme.SubText,
+                Text = "v",
+                Parent = valueBox,
+        })
+        local header = New("TextButton", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text = "",
+                Parent = row,
+        })
+        Pressable(header, row, Theme.Card, Theme.Hover)
+
+        local function currentList()
+                local out = {}
+                for _, opt in ipairs(options) do
+                        if set[opt] then
+                                table.insert(out, opt)
+                        end
+                end
+                return out
+        end
+        local function currentValue()
+                if multi then
+                        return currentList()
+                end
+                return single
+        end
+        local function isSelected(opt)
+                if multi then
+                        return set[opt] == true
+                end
+                return single == opt
+        end
+        local function updateText()
+                if multi then
+                        local l = currentList()
+                        valueLbl.Text = #l > 0 and table.concat(l, ", ") or "None"
+                else
+                        valueLbl.Text = single or "None"
+                end
+        end
+        local function paintOptions()
+                for opt, e in pairs(entries) do
+                        local sel = isSelected(opt)
+                        e.btn.BackgroundTransparency = sel and 0 or 1
+                        e.lbl.TextColor3 = sel and Theme.Cyan or Theme.Text
+                        if multi then
+                                e.mark.BackgroundTransparency = sel and 0 or 1
+                        else
+                                e.mark.Visible = sel
+                        end
+                end
+        end
+
+        local function closePopup()
+                open = false
+                entries = {}
+                if popup then
+                        popup:Destroy()
+                        popup = nil
+                end
+                if blocker then
+                        blocker:Destroy()
+                        blocker = nil
+                end
+                Tween(arrow, 0.15, { Rotation = 0 })
+                if window._closePopup == closePopup then
+                        window._closePopup = nil
+                end
+        end
+
+        local obj = {}
+        function obj:Get()
+                return currentValue()
+        end
+        function obj:Set(v, silent)
+                set = {}
+                single = nil
+                if multi then
+                        for _, k in ipairs(type(v) == "table" and v or {}) do
+                                set[tostring(k)] = true
+                        end
+                else
+                        single = v ~= nil and tostring(v) or nil
+                end
+                updateText()
+                paintOptions()
+                window:_flag(o.Flag, currentValue())
+                if not silent then
+                        SafeCall(o.Callback, currentValue())
+                end
+        end
+
+        -- Daftar pilihan = popup melayang di bawah (atau di atas) kotak nilai, membuka dengan animasi.
+        local function openPopup()
+                if window._closePopup then
+                        window._closePopup()
+                end
+                open = true
+                Tween(arrow, 0.15, { Rotation = 180 })
+                window._closePopup = closePopup
+
+                local s = window._scale.Scale
+                local vbPos, vbSize = valueBox.AbsolutePosition, valueBox.AbsoluteSize
+                local mainPos, mainSize = main.AbsolutePosition, main.AbsoluteSize
+                local width = vbSize.X / s
+                local wantH = #options == 0 and 46 or (math.min(#options, MAX_VISIBLE) * (OPT_H + 4) + 12)
+                local relX = (vbPos.X - mainPos.X) / s
+                local belowY = (vbPos.Y + vbSize.Y + 6 - mainPos.Y) / s
+                local aboveBottom = (vbPos.Y - 6 - mainPos.Y) / s
+                local availableHeight = mainSize.Y / s
+                local spaceBelow = math.max(0, availableHeight - belowY - 8)
+                local spaceAbove = math.max(0, aboveBottom - 64)
+                local h, y
+                if spaceBelow >= math.min(wantH, 70) or spaceBelow >= spaceAbove then
+                        y = math.clamp(belowY, 64, math.max(64, availableHeight - 48))
+                        h = math.min(wantH, math.max(40, availableHeight - y - 8))
+                else
+                        h = math.min(wantH, math.max(40, spaceAbove))
+                        y = math.max(64, aboveBottom - h)
+                end
+
+                blocker = New("TextButton", {
+                        Size = UDim2.fromScale(1, 1),
+                        BackgroundTransparency = 1,
+                        Text = "",
+                        ZIndex = 40,
+                        Parent = main,
+                })
+                blocker.MouseButton1Click:Connect(closePopup)
+
+                popup = New("Frame", {
+                        Position = UDim2.fromOffset(relX, y),
+                        Size = UDim2.fromOffset(width, 0),
+                        BackgroundColor3 = Theme.Secondary,
+                        BackgroundTransparency = 0.04,
+                        BorderSizePixel = 0,
+                        ClipsDescendants = true,
+                        ZIndex = 50,
+                        Parent = main,
+                }, {
+                        Corner(10),
+                        Stroke(Theme.Blue, 1, 0.5),
+                })
+                Tween(popup, 0.16, { Size = UDim2.fromOffset(width, h) })
+
+                local list = New("ScrollingFrame", {
+                        Size = UDim2.new(1, 0, 0, h),
+                        BackgroundTransparency = 1,
+                        BorderSizePixel = 0,
+                        ScrollBarThickness = 3,
+                        ScrollBarImageColor3 = Theme.Blue,
+                        CanvasSize = UDim2.new(),
+                        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+                        Parent = popup,
+                }, {
+                        New("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+                        Pad(6, 6, 6, 6),
+                })
+
+                entries = {}
+                if #options == 0 then
+                        New("TextLabel", {
+                                Size = UDim2.new(1, 0, 0, 34),
+                                BackgroundTransparency = 1,
+                                Font = FONT.Regular,
+                                TextSize = 12,
+                                TextColor3 = Theme.SubText,
+                                Text = "No options available",
+                                Parent = list,
+                        })
+                end
+                for i, opt in ipairs(options) do
+                        local btn = New("TextButton", {
+                                Size = UDim2.new(1, 0, 0, OPT_H),
+                                BackgroundColor3 = Theme.Hover,
+                                BackgroundTransparency = 1,
+                                AutoButtonColor = false,
+                                Text = "",
+                                LayoutOrder = i,
+                                Parent = list,
+                        }, { Corner(8) })
+                        local lbl = New("TextLabel", {
+                                BackgroundTransparency = 1,
+                                Position = UDim2.fromOffset(12, 0),
+                                Size = UDim2.new(1, -46, 1, 0),
+                                Font = FONT.Medium,
+                                TextSize = 13,
+                                TextColor3 = Theme.Text,
+                                TextXAlignment = Enum.TextXAlignment.Left,
+                                TextTruncate = Enum.TextTruncate.AtEnd,
+                                Text = opt,
+                                Parent = btn,
+                        })
+                        local markChildren = {}
+                        if multi then
+                                table.insert(markChildren, Corner(5))
+                                table.insert(markChildren, Stroke(Theme.Off, 1.5, 0))
+                        else
+                                table.insert(markChildren, Corner(0, 1))
+                        end
+                        local mark = New("Frame", {
+                                AnchorPoint = Vector2.new(1, 0.5),
+                                Position = UDim2.new(1, -12, 0.5, 0),
+                                Size = multi and UDim2.fromOffset(18, 18) or UDim2.fromOffset(8, 8),
+                                BackgroundColor3 = Theme.Blue,
+                                BackgroundTransparency = multi and 1 or 0,
+                                BorderSizePixel = 0,
+                                Visible = multi,
+                                Parent = btn,
+                        }, markChildren)
+                        entries[opt] = { btn = btn, lbl = lbl, mark = mark }
+
+                        btn.MouseEnter:Connect(function()
+                                if not isSelected(opt) then
+                                        btn.BackgroundTransparency = 0.5
+                                end
+                        end)
+                        btn.MouseLeave:Connect(paintOptions)
+                        btn.MouseButton1Click:Connect(function()
+                                if multi then
+                                        set[opt] = (not set[opt]) or nil
+                                else
+                                        single = opt
+                                end
+                                updateText()
+                                paintOptions()
+                                window:_flag(o.Flag, currentValue())
+                                SafeCall(o.Callback, currentValue())
+                                if not multi then
+                                        closePopup()
+                                end
+                        end)
+                end
+                for _, descendant in ipairs(popup:GetDescendants()) do
+                        if descendant:IsA("GuiObject") and descendant.ZIndex < 51 then
+                                descendant.ZIndex = 51
+                        end
+                end
+                paintOptions()
+        end
+
+        function obj:Refresh(newOptions, keep)
+                closePopup()
+                options = {}
+                for _, v in ipairs(newOptions or {}) do
+                        table.insert(options, tostring(v))
+                end
+                if keep then
+                        local ns = {}
+                        for k in pairs(set) do
+                                if table.find(options, k) then
+                                        ns[k] = true
+                                end
+                        end
+                        set = ns
+                        if single and not table.find(options, single) then
+                                single = nil
+                        end
+                else
+                        set = {}
+                        single = nil
+                end
+                updateText()
+        end
+
+        header.MouseButton1Click:Connect(function()
+                if open then
+                        closePopup()
+                else
+                        openPopup()
+                end
+        end)
+
+        if o.Default ~= nil then
+                obj:Set(o.Default, true)
+                task.defer(SafeCall, o.Callback, currentValue())
+        end
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(v) obj:Set(v, true) end)
+        end
+        return obj
+end
+
+--// ===== 7. Jendela key (dipakai Loader) =====
+
+-- opts:
+--   Title, SubTitle      teks header
+--   GetKeyUrl            link Get Key (disalin ke clipboard saat tombol ditekan)
+--   SavedKey, Status     isi awal kolom key dan teks status (opsional)
+--   Check(key)           -> ok:boolean, pesan:string   (boleh menunggu jaringan)
+--   OnSuccess(key)       dipanggil setelah key valid dan jendela tertutup
+--   OnClose()            dipanggil bila jendela ditutup tanpa key valid
+function Library:KeyPrompt(opts)
+        opts = opts or {}
+        local parent = GetGuiParent()
+        if not parent then
+                warn("[Quasar-X] KeyPrompt tidak dapat menemukan PlayerGui.")
+                return nil
+        end
+        local old = parent:FindFirstChild("XevoraKeyPrompt")
+        if old then
+                old:Destroy()
+        end
+
+        local gui = New("ScreenGui", {
+                Name = "XevoraKeyPrompt",
+                ResetOnSpawn = false,
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+                DisplayOrder = 51,
+                IgnoreGuiInset = true,
+        })
+        local mounted = SetGuiParent(gui, parent)
+        if not mounted then
+                gui:Destroy()
+                warn("[Quasar-X] Executor tidak mengizinkan pemasangan KeyPrompt.")
+                return nil
+        end
+
+        local conns, closed, busy = {}, false, false
+        local function track(conn)
+                table.insert(conns, conn)
+                return conn
+        end
+
+        local PW, PH = 400, 262
+        local cam = workspace.CurrentCamera
+        local vp = cam and cam.ViewportSize or Vector2.new(800, 400)
+        local scale = math.clamp(math.min(vp.X * 0.86 / PW, vp.Y * 0.84 / PH), 0.5, 1.2)
+
+        local root = New("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.fromOffset(PW, PH),
+                BackgroundTransparency = 1,
+                Parent = gui,
+        }, { New("UIScale", { Scale = scale }) })
+
+        local panel = New("Frame", {
+                Size = UDim2.fromScale(1, 1),
+                BackgroundColor3 = Theme.Panel,
+                BackgroundTransparency = 0.04,
+                BorderSizePixel = 0,
+                ClipsDescendants = true,
+                Parent = root,
+        }, {
+                Corner(16),
+                OrbitStroke(1.6),
+        })
+
+        local rgbTween = nil
+        local borderStroke = panel:FindFirstChildOfClass("UIStroke")
+        local borderGrad = borderStroke and borderStroke:FindFirstChildOfClass("UIGradient")
+        if borderGrad and not PERF.low then
+                local tweenOk, tween = pcall(function()
+                        return TweenService:Create(
+                                borderGrad,
+                                TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+                                { Rotation = 360 }
+                        )
+                end)
+                if tweenOk and tween then
+                        rgbTween = tween
+                        pcall(function() rgbTween:Play() end)
+                end
+        end
+
+        local function close()
+                if closed then
+                        return
+                end
+                closed = true
+                if rgbTween then pcall(function() rgbTween:Cancel() end) end
+                for _, c in ipairs(conns) do
+                        pcall(function()
+                                c:Disconnect()
+                        end)
+                end
+                gui:Destroy()
+        end
+
+        --// Header
+        local header = New("Frame", {
+                Size = UDim2.new(1, 0, 0, 56),
+                BackgroundTransparency = 1,
+                Parent = panel,
+        })
+        local textX = 18
+        local asset, assetSource = ResolveIcon(Library.DefaultIcon, Library.DefaultIconFile, Library.DefaultIconURL)
+        if asset and asset ~= "" then
+                textX = 62
+                local logo = New("ImageLabel", {
+                        AnchorPoint = Vector2.new(0, 0.5),
+                        Position = UDim2.new(0, 16, 0.5, 0),
+                        Size = UDim2.fromOffset(34, 34),
+                        BackgroundColor3 = Color3.new(0, 0, 0),
+                        Image = asset,
+                        ScaleType = Enum.ScaleType.Crop,
+                        Parent = header,
+                }, { Corner(0, 1), GradStroke(1.5, 45) })
+                if assetSource == "id" then
+                        task.delay(1.5, function()
+                                if logo.Parent and not logo.IsLoaded then
+                                        LoadIconFromUrl(Library.DefaultIconURL, function(downloaded)
+                                                if logo.Parent then
+                                                        logo.Image = downloaded
+                                                end
+                                        end)
+                                end
+                        end)
+                end
+        end
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(textX, 10),
+                Size = UDim2.new(1, -(textX + 60), 0, 21),
+                Font = FONT.Bold,
+                TextSize = 17,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = tostring(opts.Title or "Quasar-X"),
+                Parent = header,
+        })
+        New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(textX, 31),
+                Size = UDim2.new(1, -(textX + 60), 0, 16),
+                Font = FONT.Regular,
+                TextSize = 12,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = "Key System" .. (opts.SubTitle and ("  |  " .. tostring(opts.SubTitle)) or ""),
+                Parent = header,
+        })
+        HeaderButton(header, "close", -12, Theme.Red, function()
+                close()
+                SafeCall(opts.OnClose)
+        end)
+        New("Frame", {
+                Position = UDim2.fromOffset(0, 56),
+                Size = UDim2.new(1, 0, 0, 1),
+                BackgroundColor3 = Color3.new(1, 1, 1),
+                BorderSizePixel = 0,
+                Parent = panel,
+        }, { Gradient(0, true) })
+
+        --// Isi
+        local input = New("TextBox", {
+                Position = UDim2.fromOffset(20, 74),
+                Size = UDim2.new(1, -40, 0, 44),
+                BackgroundColor3 = Theme.Secondary,
+                BackgroundTransparency = 0.1,
+                PlaceholderText = "Tempel key di sini",
+                PlaceholderColor3 = Theme.SubText,
+                Text = tostring(opts.SavedKey or ""),
+                ClearTextOnFocus = false,
+                Font = FONT.Medium,
+                TextSize = 14,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Parent = panel,
+        }, {
+                Corner(10),
+                Pad(14, 0, 14, 0),
+                Stroke(Theme.Glow, 1, 0.6),
+        })
+        local inputStroke = input:FindFirstChildOfClass("UIStroke")
+        input.Focused:Connect(function()
+                Tween(inputStroke, 0.15, { Color = Theme.Blue, Transparency = 0 })
+        end)
+        input.FocusLost:Connect(function()
+                Tween(inputStroke, 0.15, { Color = Theme.Glow, Transparency = 0.6 })
+        end)
+
+        local status = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(22, 126),
+                Size = UDim2.new(1, -44, 0, 44),
+                Font = FONT.Regular,
+                TextSize = 12,
+                TextWrapped = true,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Top,
+                Text = "Belum punya key? Tekan Get Key, selesaikan langkahnya di browser, lalu tempel key di atas.",
+                Parent = panel,
+        })
+        local function setStatus(text, kind)
+                status.Text = tostring(text)
+                status.TextColor3 = kind == "ok" and Color3.fromHex("#5BD99A")
+                        or kind == "err" and Theme.Red
+                        or Theme.SubText
+        end
+        if opts.Status then
+                setStatus(opts.Status, "err")
+        end
+
+        local function makeButton(text, primary, right)
+                local b = New("TextButton", {
+                        AnchorPoint = Vector2.new(right and 1 or 0, 0),
+                        Position = UDim2.new(right and 1 or 0, right and -20 or 20, 0, 190),
+                        Size = UDim2.new(0.5, -26, 0, 46),
+                        BackgroundColor3 = primary and Color3.new(1, 1, 1) or Theme.Secondary,
+                        AutoButtonColor = false,
+                        Text = text,
+                        Font = FONT.Semi,
+                        TextSize = 14,
+                        TextColor3 = Theme.Text,
+                        Parent = panel,
+                }, primary and { Corner(10), Gradient(0) } or { Corner(10), Stroke(Theme.Glow, 1, 0.6) })
+                Pressable(b, b, primary and Color3.new(1, 1, 1) or Theme.Secondary, primary and Color3.fromRGB(205, 210, 235) or Theme.Hover)
+                return b
+        end
+        local getBtn = makeButton("Get Key", false, false)
+        local checkBtn = makeButton("Check Key", true, true)
+
+        getBtn.MouseButton1Click:Connect(function()
+                local url = tostring(opts.GetKeyUrl or "")
+                if url == "" then
+                        setStatus("Link Get Key belum diatur di Games.lua.", "err")
+                        return
+                end
+                if SetClipboard(url) then
+                        setStatus("Link Get Key disalin. Buka di browser, selesaikan langkahnya, lalu tempel key di atas.", "ok")
+                else
+                        setStatus("Clipboard tidak tersedia. Salin link ini secara manual: " .. url)
+                end
+        end)
+
+        checkBtn.MouseButton1Click:Connect(function()
+                if busy or closed then return end
+                if typeof(opts.Check) ~= "function" then
+                        setStatus("Pemeriksaan key belum dikonfigurasi.", "err")
+                        return
+                end
+                local key = (tostring(input.Text):gsub("%s+", ""))
+                if key == "" then
+                        setStatus("Isi key dulu.", "err")
+                        return
+                end
+                busy = true
+                checkBtn.Text = "Memeriksa..."
+                setStatus("Memeriksa key...")
+                task.spawn(function()
+                        local ran, valid, message = pcall(opts.Check, key)
+                        busy = false
+                        if closed then
+                                return
+                        end
+                        checkBtn.Text = "Check Key"
+                        if not ran then
+                                setStatus("Terjadi kesalahan saat memeriksa key.", "err")
+                                return
+                        end
+                        if valid then
+                                setStatus(message or "Key valid.", "ok")
+                                task.wait(0.6)
+                                close()
+                                SafeCall(opts.OnSuccess, key)
+                        else
+                                setStatus(message or "Key tidak valid.", "err")
+                        end
+                end)
+        end)
+
+        MakeDraggable(header, root, track, nil, function()
+                return scale
+        end)
+
+        return { Close = close, SetStatus = setStatus }
+end
+
+--// ===== 8. Jendela key bergaya hub =====
+
+-- Jendela key dengan tab: Verify Key, Get Key, About Us, (Partners).
+-- opts:
+--   Title, SubTitle     judul (SubTitle biasanya nama game)
+--   Links               daftar { Name = "...", Url = "...", Desc = "..." } untuk tab Get Key
+--   GetKeyUrl           alternatif bila hanya satu link
+--   Discord, About      isi tab About Us (Discord = link; About = teks)
+--   Partners            daftar { Name = "...", Url = "..." } (tab muncul bila tidak kosong)
+--   SavedKey, Status    isi awal kolom key dan teks status (opsional)
+--   Check(key)          -> ok:boolean, pesan:string   (boleh menunggu jaringan)
+--   OnSuccess(key)      dipanggil setelah key valid dan jendela tertutup
+--   OnClose()           dipanggil bila jendela ditutup tanpa key valid
+function Library:KeyWindow(opts)
+        opts = opts or {}
+        local keyValue = tostring(opts.SavedKey or "")
+        local busy = false
+
+        local win = Library:CreateWindow({
+                Title = tostring(opts.Title or "Get Key"),
+                SubTitle = opts.SubTitle,
+                OnClose = opts.OnClose,
+        })
+        if not win then
+                return nil
+        end
+
+        local function copyLink(url, label)
+                url = tostring(url or "")
+                if url == "" then
+                        win:Notify({ Title = "Link kosong", Content = "Link belum diatur di Games.lua.", Duration = 4 })
+                        return
+                end
+                if SetClipboard(url) then
+                        win:Notify({
+                                Title = tostring(label or "Link disalin"),
+                                Content = "Buka di browser, selesaikan langkahnya, lalu tempel key di tab Verify Key.",
+                                Duration = 5,
+                        })
+                else
+                        win:Notify({ Title = "Clipboard tidak tersedia", Content = "Salin link secara manual: " .. url, Duration = 8 })
+                end
+        end
+
+        --// Tab: Verify Key
+        local verify = win:AddTab("Verify Key")
+        verify:AddSection("Key Input")
+        local status = verify:AddLabel(
+                opts.Status and ("Status: " .. tostring(opts.Status)) or "Status: tempel key lalu tekan Check Key.",
+                40
+        )
+        local input = verify:AddInput({
+                Name = "Enter Key",
+                Placeholder = "Contoh: agKhRikC...",
+                Default = keyValue ~= "" and keyValue or nil,
+                Callback = function(v)
+                        keyValue = (tostring(v):gsub("%s+", ""))
+                end,
+        })
+
+        local function runCheck()
+                if busy then return end
+                if typeof(opts.Check) ~= "function" then
+                        status:Set("Status: pemeriksaan key belum dikonfigurasi.")
+                        return
+                end
+                local key = keyValue
+                local typed = input:Get()
+                if type(typed) == "string" and typed ~= "" then
+                        key = typed
+                end
+                key = (tostring(key):gsub("%s+", ""))
+                if key == "" then
+                        status:Set("Status: isi key dulu.")
+                        return
+                end
+                busy = true
+                status:Set("Status: memeriksa key...")
+                task.spawn(function()
+                        local ran, valid, message = pcall(opts.Check, key)
+                        busy = false
+                        if not win.Gui then
+                                return
+                        end
+                        if not ran then
+                                status:Set("Status: terjadi kesalahan saat memeriksa key.")
+                                return
+                        end
+                        if valid then
+                                status:Set("Status: " .. tostring(message or "Key valid."))
+                                win:Notify({ Title = "Key valid", Content = "Memuat script...", Duration = 3 })
+                                task.wait(0.8)
+                                win:Destroy()
+                                SafeCall(opts.OnSuccess, key)
+                        else
+                                status:Set("Status: " .. tostring(message or "Key tidak valid."))
+                                win:Notify({ Title = "Key ditolak", Content = tostring(message or "Key tidak valid."), Duration = 4 })
+                        end
+                end)
+        end
+        verify:AddButton({
+                Name = "Check Key",
+                Desc = "Periksa key ke server",
+                Text = "Check",
+                Callback = runCheck,
+        })
+
+        --// Tab: Get Key
+        local getTab = win:AddTab("Get Key")
+        getTab:AddSection("Get Key")
+        local links = {}
+        if type(opts.Links) == "table" then
+                for _, l in ipairs(opts.Links) do
+                        if type(l) == "table" and l.Url then
+                                table.insert(links, l)
+                        end
+                end
+        elseif type(opts.GetKeyUrl) == "string" and opts.GetKeyUrl ~= "" then
+                links = { { Name = "Get Key", Url = opts.GetKeyUrl } }
+        end
+        if #links == 0 then
+                getTab:AddLabel("Link Get Key belum diatur di Games.lua.", 40)
+        end
+        for _, l in ipairs(links) do
+                getTab:AddButton({
+                        Name = tostring(l.Name or "Get Key"),
+                        Desc = tostring(l.Desc or "Salin link, buka di browser"),
+                        Text = "Salin Link",
+                        Callback = function()
+                                copyLink(l.Url, tostring(l.Name or "Link disalin"))
+                        end,
+                })
+        end
+
+        --// Tab: About Us
+        local about = win:AddTab("About Us")
+        about:AddSection("About Us")
+        about:AddLabel(
+                tostring(opts.About or "Quasar-X: script hub Roblox. Ambil key di tab Get Key, lalu cek di tab Verify Key."),
+                58
+        )
+        if opts.Discord and tostring(opts.Discord) ~= "" then
+                about:AddSection("Discord Info")
+                about:AddButton({
+                        Name = "Copy Discord Link",
+                        Desc = tostring(opts.Discord),
+                        Text = "Salin",
+                        Callback = function()
+                                copyLink(opts.Discord, "Link Discord disalin")
+                        end,
+                })
+        end
+
+        --// Tab: Partners (hanya bila ada)
+        if type(opts.Partners) == "table" and #opts.Partners > 0 then
+                local partners = win:AddTab("Partners")
+                partners:AddSection("Partners")
+                for _, pt in ipairs(opts.Partners) do
+                        if type(pt) == "table" then
+                                partners:AddButton({
+                                        Name = tostring(pt.Name or "Partner"),
+                                        Desc = tostring(pt.Desc or pt.Url or ""),
+                                        Text = "Salin",
+                                        Callback = function()
+                                                copyLink(pt.Url, tostring(pt.Name or "Link disalin"))
+                                        end,
+                                })
+                        end
+                end
+        end
+
+        return {
+                Window = win,
+                Close = function()
+                        win:Destroy()
+                end,
+                SetStatus = function(text)
+                        status:Set("Status: " .. tostring(text))
+                end,
+        }
+end
+
+return Library
