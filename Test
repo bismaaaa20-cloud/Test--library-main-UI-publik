@@ -732,7 +732,6 @@ function Library:CreateWindow(opts)
                 floatingButton.Position = UDim2.new(0.5, 0, 0, math.max(8, topInset.Y + 8))
         end
         positionFloatingButton()
-        track(UserInputService.InputBegan and gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(positionFloatingButton) or nil)
         local camera = workspace.CurrentCamera
         if camera then
                 track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(positionFloatingButton))
