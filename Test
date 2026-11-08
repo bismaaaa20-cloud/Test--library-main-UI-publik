@@ -613,7 +613,10 @@ function Library:CreateWindow(opts)
         self._setters = {}
         self._activeTab = nil
         self._visible = true
-        self._toggleKey = opts.ToggleKey or Enum.KeyCode.RightControl
+        self._toggleKey = typeof(opts.ToggleKey) == "EnumItem"
+                and opts.ToggleKey.EnumType == Enum.KeyCode
+                and opts.ToggleKey
+                or Enum.KeyCode.RightControl
         self._maxed = false
         self._mult = 1
         self._targetScale = 1
