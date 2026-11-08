@@ -59,6 +59,53 @@ local Progress = Main:AddProgressBar({
 Progress:Set(75)
 ```
 
+## Webhook support
+
+Quasar-X dapat mengirim JSON ke endpoint HTTPS menggunakan HTTP request API milik executor. Tidak semua executor menyediakan API tersebut; cek dahulu dengan `Library:IsWebhookSupported()`.
+
+### Webhook umum
+
+```lua
+if Library:IsWebhookSupported() then
+    local ok, response = Library:SendWebhook("https://your-webhook-endpoint.example/webhook", {
+        event = "button_clicked",
+        message = "Halo dari Quasar-X",
+    })
+
+    print("Webhook terkirim:", ok)
+    if not ok then
+        warn("Webhook gagal:", response)
+    end
+else
+    warn("Executor ini tidak mendukung HTTP request API.")
+end
+```
+
+### Discord webhook (embed)
+
+```lua
+local ok, response = Library:SendDiscordWebhook("YOUR_DISCORD_WEBHOOK_URL", {
+    Username = "Quasar-X",
+    Content = "Notifikasi dari UI",
+    Embed = {
+        Title = "Status",
+        Description = "Fitur berhasil dijalankan.",
+        Color = 5793266,
+        Footer = "Quasar-X Public",
+        Fields = {
+            { Name = "Status", Value = "Success", Inline = true },
+            { Name = "Version", Value = Library.Version, Inline = true },
+        },
+    },
+})
+
+if not ok then
+    warn("Discord webhook gagal:", response)
+end
+```
+
+**Keamanan:** URL Discord webhook adalah rahasia seperti password. Jangan membagikannya di script publik atau repository publik. Jangan kirim password, cookie, token, atau data pribadi pemain. Pengiriman webhook hanya berjalan saat fungsi dipanggil secara eksplisit. Webhook Discord dapat membalas HTTP 204 saat berhasil, yang dianggap sukses oleh library.
+
 ## Fitur
 
 - Layout responsif untuk HP portrait, HP landscape, dan desktop.
