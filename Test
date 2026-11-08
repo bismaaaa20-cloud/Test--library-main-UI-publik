@@ -715,7 +715,7 @@ function Library:CreateWindow(opts)
                 ZIndex = 1000,
                 Parent = gui,
         }, {
-                Corner(1, 0),
+                Corner(0, 1),
                 New("UIStroke", { Color = Theme.Blue, Thickness = 1.6, Transparency = 0.08 }),
         })
         self.FloatingButton = floatingButton
