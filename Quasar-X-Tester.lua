@@ -46,6 +46,137 @@ local executorName = detectExecutor()
 local gameName = "Tidak diketahui"
 local placeId = "Tidak diketahui"
 
+--// Terminal internal: log real-time, dapat dibuka/tutup dan dibersihkan.
+local terminalGui, terminalPanel, terminalText, terminalScroll
+local terminalLines = {}
+local function terminalLog(message, kind)
+    local stamp = os.date("%H:%M:%S")
+    local prefix = kind == "FAIL" and "[ERROR]" or kind == "PASS" and "[PASS]" or "[INFO]"
+    table.insert(terminalLines, "[" .. stamp .. "] " .. prefix .. " " .. tostring(message))
+    if #terminalLines > 180 then table.remove(terminalLines, 1) end
+    if terminalText and terminalText.Parent then
+        terminalText.Text = table.concat(terminalLines, "\n")
+        task.defer(function()
+            if terminalScroll and terminalText and terminalText.Parent then
+                terminalScroll.CanvasSize = UDim2.new(0, 0, 0, terminalText.AbsoluteSize.Y + 12)
+                terminalScroll.CanvasPosition = Vector2.new(0, math.max(0, terminalScroll.CanvasSize.Y.Offset))
+            end
+        end)
+    end
+end
+
+local function createTerminal()
+    local ok, result = pcall(function()
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+        assert(playerGui, "PlayerGui tidak tersedia untuk terminal.")
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "QuasarX_Tester_Terminal"
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.DisplayOrder = 10001
+        gui.Parent = playerGui
+        terminalGui = gui
+
+        local toggle = Instance.new("TextButton")
+        toggle.Name = "TerminalToggle"
+        toggle.AnchorPoint = Vector2.new(1, 0)
+        toggle.Position = UDim2.new(1, -12, 0, 12)
+        toggle.Size = UDim2.fromOffset(104, 34)
+        toggle.BackgroundColor3 = Color3.fromRGB(24, 34, 55)
+        toggle.TextColor3 = Color3.fromRGB(225, 235, 255)
+        toggle.Font = Enum.Font.Code
+        toggle.TextSize = 13
+        toggle.Text = "TERMINAL"
+        toggle.Parent = gui
+        Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 8)
+
+        local panel = Instance.new("Frame")
+        panel.Name = "TerminalPanel"
+        panel.AnchorPoint = Vector2.new(0.5, 1)
+        panel.Position = UDim2.new(0.5, 0, 1, -54)
+        panel.Size = UDim2.new(0.94, 0, 0.42, 0)
+        panel.BackgroundColor3 = Color3.fromRGB(9, 13, 22)
+        panel.BackgroundTransparency = 0.04
+        panel.BorderSizePixel = 0
+        panel.Parent = gui
+        terminalPanel = panel
+        Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+
+        local title = Instance.new("TextLabel")
+        title.BackgroundTransparency = 1
+        title.Position = UDim2.fromOffset(12, 4)
+        title.Size = UDim2.new(1, -150, 0, 30)
+        title.Font = Enum.Font.Code
+        title.TextSize = 14
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.TextColor3 = Color3.fromRGB(120, 175, 255)
+        title.Text = "QUASAR-X TESTER // LIVE LOG"
+        title.Parent = panel
+
+        local function makeSmallButton(text, x, callback)
+            local b = Instance.new("TextButton")
+            b.AnchorPoint = Vector2.new(1, 0)
+            b.Position = UDim2.new(1, x, 0, 6)
+            b.Size = UDim2.fromOffset(54, 26)
+            b.BackgroundColor3 = Color3.fromRGB(30, 43, 68)
+            b.TextColor3 = Color3.fromRGB(230, 238, 255)
+            b.Font = Enum.Font.Code
+            b.TextSize = 12
+            b.Text = text
+            b.Parent = panel
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+            b.MouseButton1Click:Connect(callback)
+            return b
+        end
+
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Name = "Output"
+        scroll.Position = UDim2.fromOffset(8, 38)
+        scroll.Size = UDim2.new(1, -16, 1, -46)
+        scroll.BackgroundColor3 = Color3.fromRGB(5, 8, 14)
+        scroll.BorderSizePixel = 0
+        scroll.ScrollBarThickness = 4
+        scroll.CanvasSize = UDim2.new()
+        scroll.Parent = panel
+        terminalScroll = scroll
+        Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 6)
+
+        local output = Instance.new("TextLabel")
+        output.Name = "OutputText"
+        output.BackgroundTransparency = 1
+        output.Position = UDim2.fromOffset(8, 6)
+        output.Size = UDim2.new(1, -16, 0, 0)
+        output.AutomaticSize = Enum.AutomaticSize.Y
+        output.Font = Enum.Font.Code
+        output.TextSize = 12
+        output.TextColor3 = Color3.fromRGB(205, 218, 240)
+        output.TextXAlignment = Enum.TextXAlignment.Left
+        output.TextYAlignment = Enum.TextYAlignment.Top
+        output.TextWrapped = true
+        output.Text = ""
+        output.Parent = scroll
+        terminalText = output
+
+        makeSmallButton("CLEAR", -68, function()
+            terminalLines = {}
+            terminalLog("Terminal dibersihkan.", "INFO")
+        end)
+        makeSmallButton("HIDE", -8, function()
+            panel.Visible = false
+        end)
+        toggle.MouseButton1Click:Connect(function()
+            panel.Visible = not panel.Visible
+        end)
+        return true
+    end)
+    if not ok then
+        warn("[Quasar-X Tester] Terminal gagal dibuat: " .. tostring(result))
+        return false
+    end
+    terminalLog("Terminal aktif. Log pengujian akan muncul di sini.", "PASS")
+    return true
+end
+
 pcall(function()
     gameName = tostring(game.Name)
     placeId = tostring(game.PlaceId)
@@ -71,11 +202,13 @@ local function shortText(value, limit)
 end
 
 local function addResult(name, status, detail)
+    local cleanDetail = shortText(detail or (status == "PASS" and "OK" or "-"), 320)
     table.insert(results, {
         Name = tostring(name),
         Status = status,
-        Detail = shortText(detail or (status == "PASS" and "OK" or "-"), 320),
+        Detail = cleanDetail,
     })
+    terminalLog(tostring(name) .. " — " .. cleanDetail, status)
 end
 
 local function traceback(err)
@@ -590,6 +723,15 @@ runTests = function(sendAfter)
         return "Section, Label, Divider, Paragraph, SetTitle, dan SetContent berhasil."
     end)
 
+    runCase("Library:ScanScript", function()
+        assert(type(Library.ScanScript) == "function", "ScanScript tidak ditemukan.")
+        local okSafe, safeResult = Library:ScanScript("local number = 123; print(number)")
+        assert(okSafe and type(safeResult) == "table" and safeResult.Risk == "low", "Source biasa tidak mendapat hasil low.")
+        local okRisk, riskResult = Library:ScanScript("print('roblosecurity')")
+        assert(okRisk and type(riskResult) == "table" and riskResult.Risk == "high", "Indikator berisiko tidak terdeteksi.")
+        return "Source biasa dan indikator cookie diuji; scanner hanya analisis pola, tidak memblokir kode."
+    end)
+
     runCase("AddToggle: Set / Get / Callback", function()
         assert(toggleObject, "AddToggle gagal dibuat.")
         toggleObject:Set(true)
@@ -617,12 +759,30 @@ runTests = function(sendAfter)
         return "Teks uji diterima oleh Get() dan callback."
     end)
 
-    runCase("AddDropdown: Set / Get / Callback", function()
+    runCase("AddDropdown: Set / Get / Refresh", function()
         assert(dropdownObject, "AddDropdown gagal dibuat.")
         dropdownObject:Set("Option B")
         assert(dropdownObject:Get() == "Option B", "Get() tidak mengembalikan Option B.")
         assert(callbackValues.Dropdown == "Option B", "Callback tidak menerima Option B.")
-        return "Option B diterima oleh Get() dan callback."
+        dropdownObject:Refresh({ "Option A", "Option C", "Option D" }, false)
+        dropdownObject:Set("Option D")
+        assert(dropdownObject:Get() == "Option D", "Refresh/Set tidak memperbarui pilihan.")
+        return "Set(), Get(), callback, dan Refresh() berhasil."
+    end)
+
+    runCase("AddDropdown Multi: Set / Get", function()
+        local multiValues
+        local multi = Tab:AddDropdown({
+            Name = "Multi dropdown test",
+            Multi = true,
+            Options = { "Red", "Blue", "Green" },
+            Callback = function(value) multiValues = value end,
+        })
+        multi:Set({ "Red", "Green" })
+        local value = multi:Get()
+        assert(type(value) == "table" and #value == 2, "Get() multi tidak mengembalikan dua pilihan.")
+        assert(multiValues and #multiValues == 2, "Callback multi tidak menerima pilihan.")
+        return "Multi-select mengembalikan dua pilihan dan callback berjalan."
     end)
 
     runCase("AddProgressBar: Set / Get / Callback", function()
@@ -631,6 +791,13 @@ runTests = function(sendAfter)
         assert(progressObject:Get() == 80, "Get() tidak mengembalikan 80.")
         assert(callbackValues.Progress == 80, "Callback tidak menerima nilai 80.")
         return "Nilai 80 diterima oleh Get() dan callback."
+    end)
+
+    runCase("AddLabel: Set", function()
+        local label = Tab:AddLabel("Label awal", 30)
+        assert(label and type(label.Set) == "function", "Label:Set tidak ditemukan.")
+        label:Set("Label diperbarui")
+        return "Label:Set berhasil."
     end)
 
     runCase("AddButton: Fire / Callback", function()
@@ -649,6 +816,30 @@ runTests = function(sendAfter)
         return "Set(), Get(), dan Changed berhasil. Tekan F8 untuk tes input fisik."
     end)
 
+    runCase("Window: Toggle / SetToggleKey / SetScale / Maximize", function()
+        assert(type(Window.Toggle) == "function", "Toggle tidak ditemukan.")
+        assert(Window:SetToggleKey(Enum.KeyCode.F7) == true, "SetToggleKey gagal.")
+        Window:SetScale("Small")
+        Window:SetScale("Medium")
+        Window:SetMaximized(true)
+        Window:SetMaximized(false)
+        Window:Toggle(false)
+        assert(Window:IsVisible() == false, "Toggle(false) gagal.")
+        Window:Toggle(true)
+        assert(Window:IsVisible() == true, "Toggle(true) gagal.")
+        Window:SetToggleKey(Enum.KeyCode.RightControl)
+        return "Toggle, SetToggleKey, SetScale, SetMaximized berhasil."
+    end)
+
+    runCase("Window: RGB / Performance", function()
+        Window:SetRGB(false)
+        Window:SetRGB(true)
+        Window:SetPerformance("Low")
+        Window:SetPerformance("High")
+        Window:SetPerformance("Low")
+        return "SetRGB dan mode Performance Low/High berhasil dipanggil."
+    end)
+
     runCase("Window: Show / Hide / IsVisible", function()
         assert(type(Window.Show) == "function", "Show tidak ditemukan.")
         assert(type(Window.Hide) == "function", "Hide tidak ditemukan.")
@@ -660,14 +851,52 @@ runTests = function(sendAfter)
         return "Hide() dan Show() berjalan."
     end)
 
-    runCase("Window: Notify", function()
-        Window:Notify({
-            Title = "Tes selesai",
-            Content = "Pemeriksaan Quasar-X selesai. Lihat laporan untuk detail.",
-            Type = "success",
-            Duration = 4,
+    runCase("Window: Notify semua tipe", function()
+        for _, kind in ipairs({ "info", "success", "warning", "error" }) do
+            Window:Notify({
+                Title = "Notification " .. kind,
+                Content = "Pengujian tipe " .. kind,
+                Type = kind,
+                Duration = 1,
+            })
+        end
+        return "info, success, warning, dan error berhasil dipanggil."
+    end)
+
+    runCase("Library: KeyPrompt create / close", function()
+        assert(type(Library.KeyPrompt) == "function", "KeyPrompt tidak ditemukan.")
+        local prompt = Library:KeyPrompt({ Title = "Tester KeyPrompt", Status = "Tes internal" })
+        assert(type(prompt) == "table" and type(prompt.Close) == "function", "KeyPrompt gagal dibuat.")
+        prompt:Close()
+        return "KeyPrompt berhasil dibuat dan ditutup."
+    end)
+
+    runCase("Library: KeyWindow create / close", function()
+        assert(type(Library.KeyWindow) == "function", "KeyWindow tidak ditemukan.")
+        local keyWindow = Library:KeyWindow({
+            Title = "Tester KeyWindow",
+            SubTitle = "Internal UI test",
+            About = "Quasar-X automated test",
+            Links = {},
+            Partners = {},
         })
-        return "Notifikasi berhasil dipanggil."
+        assert(type(keyWindow) == "table" and type(keyWindow.Close) == "function", "KeyWindow gagal dibuat.")
+        keyWindow:Close()
+        return "KeyWindow berhasil dibuat dan ditutup."
+    end)
+
+    runCase("CreateWindow disposable / Destroy", function()
+        local temp = Library:CreateWindow({
+            Title = "Quasar-X Disposable Test",
+            Icon = false,
+            Performance = "Low",
+            RGB = false,
+            AutoLoad = false,
+            AutoSave = false,
+        })
+        assert(temp and type(temp.Destroy) == "function", "Window sementara gagal dibuat.")
+        temp:Destroy()
+        return "Window sementara berhasil dibuat dan Destroy() berhasil."
     end)
 
     if type(collectgarbage) == "function" then
@@ -693,6 +922,7 @@ runTests = function(sendAfter)
         end)
     end
 
+    terminalLog("Semua tes otomatis selesai. Tekan tombol kirim untuk mengirim laporan Discord.", "INFO")
     if sendAfter then
         local ok, message = sendReport()
         if statusParagraph then
@@ -707,12 +937,10 @@ end
 addReportButton()
 addRerunButton()
 
--- Tes berjalan otomatis satu kali setelah UI berhasil dibuat.
--- Laporan langsung dikirim hanya jika WEBHOOK_URL sudah diatur di salinan pribadi.
--- Jika kosong, masukkan URL melalui kotak di UI lalu tekan tombol Kirim Laporan.
-local autoSendConfigured = type(WEBHOOK_URL) == "string" and WEBHOOK_URL:match("^https://") ~= nil
+-- Tes otomatis berjalan tanpa mengirim laporan. Pengguna bisa memantau terminal
+-- dan menekan tombol Discord setelah memasukkan webhook.
 task.spawn(function()
-    runTests(autoSendConfigured)
+    runTests(false)
 end)
 
 print("[Quasar-X Tester] UI diagnostic dibuat.")
