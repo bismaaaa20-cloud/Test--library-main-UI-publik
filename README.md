@@ -1,4 +1,4 @@
-# Quasar-X Public v2.0.1
+# Quasar-X Public v2.0.2
 
 Library UI Roblox yang responsif untuk perangkat mobile dan desktop.
 
@@ -190,6 +190,7 @@ Scanner mencari beberapa indikator seperti referensi cookie/token, klaim Robux g
 ## Fitur
 
 - Layout responsif untuk HP portrait, HP landscape, dan desktop.
+- Sinkronisasi ulang ukuran area scroll setelah komponen dibuat, orientasi berubah, dan beberapa frame pertama untuk mengurangi masalah kontrol yang belum terlihat saat pertama kali dibuka.
 - Floating button bulat di tengah atas; bisa digeser dan digunakan untuk menyembunyikan atau membuka UI.
 - Floating button kembali ke tengah atas saat orientasi layar berubah.
 - Tombol toggle keyboard yang bisa diatur.
