@@ -10,10 +10,11 @@ Script penguji terpisah tersedia di [Quasar-X-Tester.lua](https://github.com/bis
 ### Cara menjalankan
 
 1. Jalankan loader di bawah melalui executor pada game Roblox yang ingin diuji.
-2. Tester membuat jendela diagnostik dan menjalankan pemeriksaan otomatis.
-3. Tempel URL Discord webhook pada kotak **Discord Webhook URL** di jendela tester.
-4. Tekan **Kirim laporan terbaru ke Discord** untuk mengirim hasil dan error ke channel Discord.
-5. Untuk tes keyboard, tekan F8 terlebih dahulu, lalu kirim ulang laporan agar hasil tes manual ikut tercatat.
+2. Tester membuat jendela diagnostik dan **terminal internal**. Terminal menampilkan log PASS, FAIL, dan pesan error secara langsung; tekan tombol TERMINAL untuk membuka/menutupnya, atau CLEAR untuk membersihkan log.
+3. Pemeriksaan otomatis mencakup API library, komponen UI, callback, pengaturan window, scanner, dan jendela key.
+4. Tempel URL Discord webhook pada kotak **Discord Webhook URL** di jendela tester.
+5. Tekan **Kirim laporan terbaru ke Discord** untuk mengirim hasil dan error ke channel Discord. Laporan tidak dikirim otomatis.
+6. Untuk tes keyboard, tekan F8 terlebih dahulu, lalu kirim ulang laporan agar hasil tes manual ikut tercatat.
 
 Loader tester:
 
@@ -26,11 +27,13 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/bismaaaa20-cloud/Test
 - Identifikasi nama executor dan pemeriksaan API umum/Syn yang tersedia.
 - Snapshot perkiraan memori Lua melalui `collectgarbage("count")`, jika tersedia.
 - Pemeriksaan kompatibilitas dan ketersediaan PlayerGui.
-- Pembuatan komponen Section, Label, Divider, Paragraph, Toggle, Slider, Input, Dropdown, ProgressBar, Button, dan Keybind.
-- Pengujian nilai `Set()`, `Get()`, dan callback pada komponen yang mendukungnya.
-- Pengujian `Window:Show()`, `Window:Hide()`, notifikasi, dan callback keyboard F8 secara manual.
+- Semua komponen publik: Section, Label, Divider, Paragraph, Toggle, Slider, Input, Dropdown single/multi, ProgressBar, Button, dan Keybind.
+- Pengujian nilai `Set()`, `Get()`, callback, `Refresh()`, dan `Fire()` sesuai API komponen.
+- Kontrol Window: Show/Hide/Toggle, IsVisible, SetToggleKey, SetScale, SetMaximized, SetRGB, SetPerformance, Notify semua tipe, dan Destroy pada window sementara.
+- Pemeriksaan `CheckCompatibility()`, `ScanScript()`, `KeyPrompt()`, `KeyWindow()`, serta pengiriman laporan melalui webhook.
+- Tes F8 tetap manual karena membutuhkan input keyboard fisik.
 
-Tester tidak menggunakan PlaceId khusus, sehingga dapat dicoba di berbagai game. Namun, tidak ada cara untuk menjamin semua executor atau semua game akan kompatibel; proteksi game, izin executor, perangkat, dan pembaruan Roblox dapat memengaruhi hasil.
+Tester tidak menggunakan PlaceId khusus, sehingga dapat dicoba di berbagai game. Terminal adalah jendela output internal tester, bukan konsol developer Roblox dan tidak menangkap semua print/warn/error dari script lain. Ia menampilkan log yang dihasilkan tester sendiri. Tidak ada cara untuk menjamin semua executor atau semua game akan kompatibel; proteksi game, izin executor, perangkat, dan pembaruan Roblox dapat memengaruhi hasil.
 
 **Privasi:** laporan hanya mengirim nama executor, nama game, PlaceId, kemampuan yang terdeteksi, hasil tes, dan pesan error. Tester tidak mengirim nama akun, UserId, JobId, cookie, token, atau URL webhook. URL webhook hanya digunakan di memori lokal untuk mengirim laporan dan tidak ditampilkan dalam laporan Discord. Jangan membagikan URL Discord webhook karena siapa pun yang memilikinya dapat mengirim pesan ke channel tersebut.
 
