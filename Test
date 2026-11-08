@@ -613,6 +613,7 @@ function Library:CreateWindow(opts)
         self._setters = {}
         self._activeTab = nil
         self._visible = true
+        self._toggleKey = opts.ToggleKey or Enum.KeyCode.RightControl
         self._maxed = false
         self._mult = 1
         self._targetScale = 1
@@ -736,11 +737,11 @@ function Library:CreateWindow(opts)
         if camera then
                 track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(positionFloatingButton))
         end
-        track(floatingButton.Activated:Connect(function()
+        MakeDraggable(floatingButton, floatingButton, track, function()
                 if self.Root and self.Root.Parent then
                         self:Toggle()
                 end
-        end))
+        end, nil)
 
         self._scale = New("UIScale", { Scale = 1, Parent = root })
 
@@ -1034,9 +1035,8 @@ function Library:CreateWindow(opts)
         end, nil)
 
         --// Tombol keyboard (PC) & penyesuaian saat ukuran layar / orientasi berubah
-        local toggleKey = opts.ToggleKey or Enum.KeyCode.RightControl
         track(UserInputService.InputBegan:Connect(function(input, processed)
-                if not processed and input.KeyCode == toggleKey then
+                if not processed and input.KeyCode == self._toggleKey then
                         self:Toggle()
                 end
         end))
@@ -1049,6 +1049,7 @@ function Library:CreateWindow(opts)
                 local camera = workspace.CurrentCamera
                 if camera then
                         cameraConn = track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+                                positionFloatingButton()
                                 self:_layout()
                         end))
                 end
@@ -1225,6 +1226,26 @@ function Window:Toggle(state)
         end
 end
 
+function Window:Show()
+        self:Toggle(true)
+end
+
+function Window:Hide()
+        self:Toggle(false)
+end
+
+function Window:IsVisible()
+        return self._visible == true
+end
+
+function Window:SetToggleKey(key)
+        if typeof(key) ~= "EnumItem" or key.EnumType ~= Enum.KeyCode then
+                return false
+        end
+        self._toggleKey = key
+        return true
+end
+
 function Window:Destroy()
         if self._closePopup then pcall(self._closePopup) end
         for _, e in ipairs(self._rgbList) do
@@ -1259,6 +1280,11 @@ end
 function Window:Notify(o)
         o = o or {}
         self._notifyOrder += 1
+        local notifyType = string.lower(tostring(o.Type or "info"))
+        local accent = notifyType == "success" and Theme.Cyan
+                or notifyType == "error" and Theme.Red
+                or notifyType == "warning" and Theme.Purple
+                or Theme.Blue
         local card = New("Frame", {
                 Size = UDim2.new(1, 0, 0, 0),
                 AutomaticSize = Enum.AutomaticSize.Y,
@@ -1273,7 +1299,7 @@ function Window:Notify(o)
         New("Frame", {
                 Size = UDim2.new(0, 3, 1, -16),
                 Position = UDim2.fromOffset(8, 8),
-                BackgroundColor3 = Theme.Blue,
+                BackgroundColor3 = accent,
                 BorderSizePixel = 0,
                 Parent = card,
         }, { Corner(2) })
@@ -1718,6 +1744,133 @@ function Tab:AddSection(name)
         local sec = { Frame = holder, Text = string.lower(tostring(name)) }
         table.insert(self._sections, sec)
         self._currentSection = sec
+end
+
+function Tab:AddDivider()
+        local line = New("Frame", {
+                Size = UDim2.new(1, -8, 0, 1),
+                Position = UDim2.fromOffset(4, 0),
+                BackgroundColor3 = Theme.Border,
+                BackgroundTransparency = 0.15,
+                BorderSizePixel = 0,
+                LayoutOrder = self._order,
+                Parent = self.Page,
+        })
+        self._order += 1
+        table.insert(self._items, { Frame = line, Text = "", Section = self._currentSection })
+        return line
+end
+
+function Tab:AddParagraph(o)
+        o = type(o) == "table" and o or { Content = tostring(o or "") }
+        local title = tostring(o.Title or "Information")
+        local content = tostring(o.Content or "")
+        local row = self:_row(tonumber(o.Height) or 78, title .. " " .. content)
+        local titleLabel = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, 8),
+                Size = UDim2.new(1, -28, 0, 20),
+                Font = FONT.Semi,
+                TextSize = 14,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = title,
+                Parent = row,
+        })
+        local contentLabel = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, 31),
+                Size = UDim2.new(1, -28, 1, -38),
+                Font = FONT.Regular,
+                TextSize = 12,
+                TextColor3 = Theme.SubText,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Top,
+                TextWrapped = true,
+                Text = content,
+                Parent = row,
+        })
+        local obj = {}
+        function obj:SetTitle(value)
+                titleLabel.Text = tostring(value or "")
+        end
+        function obj:SetContent(value)
+                contentLabel.Text = tostring(value or "")
+        end
+        return obj
+end
+
+function Tab:AddProgressBar(o)
+        o = o or {}
+        local window = self.Window
+        local function finite(value, fallback)
+                local n = tonumber(value)
+                if not n or n ~= n or n == math.huge or n == -math.huge then return fallback end
+                return n
+        end
+        local min = finite(o.Min, 0)
+        local max = finite(o.Max, 100)
+        if max < min then min, max = max, min end
+        local span = max - min
+        local suffix = tostring(o.Suffix or "")
+        local row = self:_row(58, tostring(o.Name or "Progress") )
+        local titleLabel = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(14, 7),
+                Size = UDim2.new(1, -120, 0, 20),
+                Font = FONT.Semi,
+                TextSize = 13,
+                TextColor3 = Theme.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = tostring(o.Name or "Progress"),
+                Parent = row,
+        })
+        local valueLabel = New("TextLabel", {
+                AnchorPoint = Vector2.new(1, 0),
+                Position = UDim2.new(1, -14, 0, 7),
+                Size = UDim2.fromOffset(100, 20),
+                BackgroundTransparency = 1,
+                Font = FONT.Bold,
+                TextSize = 12,
+                TextColor3 = Theme.Cyan,
+                TextXAlignment = Enum.TextXAlignment.Right,
+                Text = "",
+                Parent = row,
+        })
+        local bar = New("Frame", {
+                Position = UDim2.fromOffset(14, 35),
+                Size = UDim2.new(1, -28, 0, 8),
+                BackgroundColor3 = Theme.Secondary,
+                BorderSizePixel = 0,
+                Parent = row,
+        }, { Corner(0, 1) })
+        local fill = New("Frame", {
+                Size = UDim2.fromScale(0, 1),
+                BackgroundColor3 = Theme.Blue,
+                BorderSizePixel = 0,
+                Parent = bar,
+        }, { Corner(0, 1) })
+        local value = min
+        local obj = {}
+        function obj:Set(nextValue, silent)
+                local n = math.clamp(finite(nextValue, min), min, max)
+                value = n
+                local ratio = span > 0 and math.clamp((n - min) / span, 0, 1) or 0
+                Tween(fill, 0.16, { Size = UDim2.fromScale(ratio, 1) })
+                valueLabel.Text = tostring(n) .. suffix
+                window:_flag(o.Flag, value)
+                if not silent then SafeCall(o.Callback, value) end
+        end
+        function obj:Get()
+                return value
+        end
+        obj:Set(o.Default ~= nil and o.Default or min, true)
+        if o.Flag then
+                window:_registerFlag(o.Flag, function(v) obj:Set(v, true) end)
+        end
+        return obj
 end
 
 function Tab:AddLabel(text, height)
