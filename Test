@@ -71,10 +71,10 @@ function Library:CheckCompatibility()
         end
 
         local capabilities = {
-                UI = available(Instance) and game ~= nil,
-                TouchInput = UserInputService ~= nil,
-                KeyboardInput = UserInputService ~= nil,
-                MouseInput = UserInputService ~= nil,
+                UI = typeof(Instance) == "table" and available(Instance.new) and game ~= nil,
+                TouchInput = UserInputService ~= nil and UserInputService.TouchEnabled == true,
+                KeyboardInput = UserInputService ~= nil and UserInputService.KeyboardEnabled == true,
+                MouseInput = UserInputService ~= nil and UserInputService.MouseEnabled == true,
                 HttpRequest = available(requestFn),
                 Clipboard = available(clipboardFn),
                 CustomAsset = available(customAssetFn),
@@ -86,7 +86,7 @@ function Library:CheckCompatibility()
                 DeleteFile = available(delfile),
                 ListFiles = available(listfiles),
                 IdentifyExecutor = identifyFn ~= nil,
-                PlayerGui = LocalPlayer ~= nil,
+                PlayerGui = LocalPlayer ~= nil and LocalPlayer:FindFirstChildOfClass("PlayerGui") ~= nil,
         }
 
         local supported, unsupported = {}, {}
