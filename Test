@@ -1,4 +1,4 @@
---// Quasar-X v2.0 Public | responsive UI library for mobile and desktop
+--// Quasar-X v2.0.1 Public | responsive UI library for mobile and desktop
 --// Load: loadstring(game:HttpGet(URL))()
 --// API: CreateWindow / AddTab / AddSection / AddToggle / AddSlider / AddDropdown /
 --//      AddInput / AddKeybind / AddButton / AddLabel / Notify
