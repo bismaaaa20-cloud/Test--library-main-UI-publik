@@ -1,4 +1,4 @@
---// Quasar-X v2.0.2 Public | responsive UI library for mobile and desktop
+--// Quasar-X v2.0.1 Public | responsive UI library for mobile and desktop
 --// Load: loadstring(game:HttpGet(URL))()
 --// API: CreateWindow / AddTab / AddSection / AddToggle / AddSlider / AddDropdown /
 --//      AddInput / AddKeybind / AddButton / AddLabel / Notify
@@ -54,7 +54,7 @@ local function SetClipboard(value)
         return ok
 end
 
-local Library = { Version = "2.0.2", Windows = {} }
+local Library = { Version = "2.0.1", Windows = {} }
 
 -- Diagnostik pasif: hanya memeriksa keberadaan API, tidak mengirim request,
 -- menulis file, membaca data akun, atau mengubah pengaturan executor.
@@ -762,36 +762,6 @@ local function MakeDraggable(handle, target, track, onClick, getScale)
         end))
 end
 
--- Sinkronisasi CanvasSize manual. Ini menghindari daftar tab/kontrol yang kadang
--- belum mendapat ukuran scroll yang benar pada frame pertama setelah UI dibuat.
-local function BindCanvas(scroller, layout, paddingX, paddingY, track)
-        local function sync()
-                if not scroller or not scroller.Parent or not layout or not layout.Parent then
-                        return
-                end
-                local content = layout.AbsoluteContentSize
-                local horizontal = scroller.ScrollingDirection == Enum.ScrollingDirection.X
-                local width = horizontal and (content.X + (paddingX or 0)) or 0
-                local height = horizontal and 0 or (content.Y + (paddingY or 0))
-                scroller.CanvasSize = UDim2.fromOffset(math.ceil(width), math.ceil(height))
-        end
-
-        local function connect(signal)
-                local connection = signal:Connect(function()
-                        task.defer(sync)
-                end)
-                if track then
-                        track(connection)
-                end
-        end
-
-        connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"))
-        connect(scroller.ChildAdded)
-        connect(scroller.ChildRemoved)
-        task.defer(sync)
-        return sync
-end
-
 -- Ikon vektor (digambar dari Frame, jadi tidak bergantung font atau asset).
 local function MagnifierIcon(parent, position)
         local holder = New("Frame", {
@@ -1209,16 +1179,13 @@ function Library:CreateWindow(opts)
                 BorderSizePixel = 0,
                 ScrollBarThickness = 0,
                 CanvasSize = UDim2.new(),
-                AutomaticCanvasSize = Enum.AutomaticSize.None,
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
                 Parent = sidebar,
         }, {
                 New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
                 Pad(10, 2, 10, 6),
         })
         self._tabLayout = self._tabList:FindFirstChildOfClass("UIListLayout")
-        self._syncTabCanvas = BindCanvas(self._tabList, self._tabLayout, 20, 8, function(conn)
-                self:_track(conn)
-        end)
 
         -- Kartu profil di dasar sidebar
         local profile = New("Frame", {
@@ -1397,21 +1364,6 @@ function Library:CreateWindow(opts)
         else
                 self:_applyPerf(false)
         end
-
-        -- Roblox/Executor terkadang baru menghitung AbsoluteSize dan UIListLayout
-        -- setelah beberapa frame. Sinkronkan ulang tanpa meminta pengguna reload.
-        task.spawn(function()
-                for _ = 1, 3 do
-                        RunService.Heartbeat:Wait()
-                end
-                if not self.Gui or not self.Gui.Parent then return end
-                self:_layout()
-                if self._syncTabCanvas then self._syncTabCanvas() end
-                for _, tab in ipairs(self._tabs) do
-                        if tab._syncCanvas then tab._syncCanvas() end
-                        if tab.Page then tab.Page.CanvasPosition = Vector2.zero end
-                end
-        end)
         return self
 end
 
@@ -1476,7 +1428,7 @@ function Window:_layout()
                 self._tabList.Position = UDim2.fromOffset(0, 42)
                 self._tabList.Size = UDim2.new(1, 0, 0, 42)
                 self._tabList.ScrollingDirection = Enum.ScrollingDirection.X
-                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.None
+                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.X
                 self._tabLayout.FillDirection = Enum.FillDirection.Horizontal
                 for _, tab in ipairs(self._tabs) do
                         tab.Button.Size = UDim2.fromOffset(116, 38)
@@ -1492,7 +1444,7 @@ function Window:_layout()
                 self._tabList.Position = UDim2.fromOffset(0, 54)
                 self._tabList.Size = UDim2.new(1, 0, 1, -122)
                 self._tabList.ScrollingDirection = Enum.ScrollingDirection.Y
-                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.None
+                self._tabList.AutomaticCanvasSize = Enum.AutomaticSize.Y
                 self._tabLayout.FillDirection = Enum.FillDirection.Vertical
                 for _, tab in ipairs(self._tabs) do
                         tab.Button.Size = UDim2.new(1, 0, 0, 42)
@@ -1502,12 +1454,6 @@ function Window:_layout()
                 self._content.Size = UDim2.new(1, -(sbW + 30), 1, -77)
         end
         self._mobileLayout = mobile
-        if self._syncTabCanvas then
-                self._syncTabCanvas()
-        end
-        for _, tab in ipairs(self._tabs) do
-                if tab._syncCanvas then tab._syncCanvas() end
-        end
         self._notifyHolder.Size = UDim2.new(0, math.max(150, math.min(270, vp.X - 24)), 1, -24)
 
         self._targetScale = targetScale
@@ -1834,7 +1780,7 @@ function Window:AddTab(opts)
                 ScrollBarThickness = 3,
                 ScrollBarImageColor3 = Theme.Blue,
                 CanvasSize = UDim2.new(),
-                AutomaticCanvasSize = Enum.AutomaticSize.None,
+                AutomaticCanvasSize = Enum.AutomaticSize.Y,
                 ScrollingDirection = Enum.ScrollingDirection.Y,
                 Visible = false,
                 Parent = self._content,
@@ -1843,17 +1789,11 @@ function Window:AddTab(opts)
                 Pad(0, 0, 8, 12),
         })
 
-        tab._pageLayout = tab.Page:FindFirstChildOfClass("UIListLayout")
-        tab._syncCanvas = BindCanvas(tab.Page, tab._pageLayout, 8, 12, function(conn)
-                self:_track(conn)
-        end)
-
         tab.Button.MouseButton1Click:Connect(function()
                 self:_select(tab)
         end)
 
         table.insert(self._tabs, tab)
-        if self._syncTabCanvas then self._syncTabCanvas() end
         if #self._tabs == 1 then
                 self:_select(tab)
         end
@@ -2075,17 +2015,10 @@ function Tab:AddSection(name)
                 LayoutOrder = self._order,
                 Parent = self.Page,
         })
-        New("Frame", {
-                Position = UDim2.fromOffset(2, 7),
-                Size = UDim2.fromOffset(3, 12),
-                BackgroundColor3 = Theme.Blue,
-                BorderSizePixel = 0,
-                Parent = holder,
-        }, { Corner(2) })
         New("TextLabel", {
                 BackgroundTransparency = 1,
-                Position = UDim2.fromOffset(12, 2),
-                Size = UDim2.new(1, -12, 1, 0),
+                Position = UDim2.fromOffset(2, 2),
+                Size = UDim2.new(1, -2, 1, 0),
                 Font = FONT.Bold,
                 TextSize = 15,
                 TextColor3 = Theme.Text,
