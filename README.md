@@ -1,6 +1,6 @@
-# Quasar-X Public v2.0.1
+# Quasar-X Public v2.0.2
 
-Library UI Roblox yang responsif untuk perangkat mobile dan desktop.
+Library UI Roblox yang responsif untuk perangkat mobile dan desktop. v2.0.2 merapikan hierarki visual panel, header, sidebar, kolom pencarian, dan indikator tab tanpa mengubah API komponen.
 
 
 ## Quasar-X Tester lintas-game
