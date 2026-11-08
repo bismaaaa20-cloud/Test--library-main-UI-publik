@@ -30,6 +30,14 @@ end
 
 local customAssetFn = FirstFunction(getcustomasset, getsynasset)
 local clipboardFn = FirstFunction(setclipboard, toclipboard)
+local requestFn = FirstFunction(
+        request,
+        http_request,
+        syn and syn.request,
+        http and http.request,
+        fluxus and fluxus.request,
+        electron and electron.request
+)
 
 local function SetClipboard(value)
         if not clipboardFn then return false end
@@ -38,6 +46,91 @@ local function SetClipboard(value)
 end
 
 local Library = { Version = "2.0.0", Windows = {} }
+
+--// ===== Webhook support (executor HTTP request API) =====
+function Library:IsWebhookSupported()
+        return typeof(requestFn) == "function"
+end
+
+local function ValidWebhookUrl(url)
+        return type(url) == "string"
+                and #url <= 2048
+                and url:match("^https://") ~= nil
+end
+
+function Library:SendWebhook(url, payload)
+        if not ValidWebhookUrl(url) then
+                return false, "URL webhook harus berupa HTTPS yang valid."
+        end
+        if type(payload) ~= "table" then
+                return false, "Payload webhook harus berupa table."
+        end
+        if not requestFn then
+                return false, "Executor tidak menyediakan HTTP request API."
+        end
+
+        local encodedOk, body = pcall(function()
+                return HttpService:JSONEncode(payload)
+        end)
+        if not encodedOk then
+                return false, "Payload gagal diubah menjadi JSON: " .. tostring(body)
+        end
+
+        local requestOk, response = pcall(requestFn, {
+                Url = url,
+                Method = "POST",
+                Headers = {
+                        ["Content-Type"] = "application/json",
+                        ["Accept"] = "application/json",
+                },
+                Body = body,
+        })
+        if not requestOk then
+                return false, "Request webhook gagal: " .. tostring(response)
+        end
+        if type(response) == "table" then
+                local statusCode = tonumber(response.StatusCode or response.Status)
+                if response.Success == false or (statusCode and (statusCode < 200 or statusCode >= 300)) then
+                        return false, "Webhook menolak request (HTTP " .. tostring(statusCode or "unknown") .. ").", response
+                end
+        end
+        return true, response
+end
+
+-- Helper Discord: kirim content dan/atau satu embed.
+function Library:SendDiscordWebhook(url, options)
+        options = type(options) == "table" and options or {}
+        local payload = {}
+        if options.Content ~= nil then payload.content = tostring(options.Content) end
+        if options.Username ~= nil then payload.username = tostring(options.Username) end
+        if options.AvatarURL ~= nil then payload.avatar_url = tostring(options.AvatarURL) end
+
+        if options.Embed then
+                local embed = options.Embed
+                local fields = {}
+                for _, field in ipairs(embed.Fields or {}) do
+                        if type(field) == "table" then
+                                table.insert(fields, {
+                                        name = tostring(field.Name or "Info"),
+                                        value = tostring(field.Value or "-"),
+                                        inline = field.Inline == true,
+                                })
+                        end
+                end
+                local discordEmbed = {
+                        title = embed.Title and tostring(embed.Title) or nil,
+                        description = embed.Description and tostring(embed.Description) or nil,
+                        color = math.clamp(math.floor(tonumber(embed.Color) or 5793266), 0, 16777215),
+                        fields = #fields > 0 and fields or nil,
+                        footer = embed.Footer and { text = tostring(embed.Footer) } or nil,
+                }
+                payload.embeds = { discordEmbed }
+        end
+        if payload.content == nil and payload.embeds == nil then
+                return false, "Isi Discord webhook kosong."
+        end
+        return self:SendWebhook(url, payload)
+end
 
 local function SafeConfigKey(value)
         local key = tostring(value or "default"):lower():gsub("[^%w%-_]", "_"):gsub("_+", "_")
