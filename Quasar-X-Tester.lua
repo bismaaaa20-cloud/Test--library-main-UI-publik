@@ -5,7 +5,7 @@
 
 local TESTER_VERSION = "1.0.0"
 local LIBRARY_URL = "https://raw.githubusercontent.com/bismaaaa20-cloud/Test--library-main-UI-publik/main/Test"
-local WEBHOOK_URL = "ISI_WEBHOOK_DISCORD_DI_SINI"
+local WEBHOOK_URL = "" -- Opsional: isi di sini hanya pada salinan pribadi, atau masukkan lewat jendela tester.
 
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -210,7 +210,7 @@ local function postRawDiscord(description, failed)
 end
 
 local function sendReport()
-    if WEBHOOK_URL == "ISI_WEBHOOK_DISCORD_DI_SINI" or type(WEBHOOK_URL) ~= "string" or not WEBHOOK_URL:match("^https://") then
+    if type(WEBHOOK_URL) ~= "string" or not WEBHOOK_URL:match("^https://") then
         addResult("Discord webhook report", "INFO", "Isi WEBHOOK_URL dengan URL Discord webhook HTTPS milikmu.")
         return false, "Webhook belum diatur. Isi WEBHOOK_URL di bagian atas file tester."
     end
@@ -472,6 +472,16 @@ end)
 
 local function addReportButton()
     pcall(function()
+        Tab:AddInput({
+            Name = "Discord Webhook URL",
+            Placeholder = "Tempel URL webhook di sini",
+            Callback = function(value)
+                WEBHOOK_URL = tostring(value or ""):gsub("%s+$", "")
+            end,
+        })
+    end)
+
+    pcall(function()
         Tab:AddButton({
             Name = "Kirim laporan terbaru ke Discord",
             Text = "Kirim",
@@ -678,7 +688,7 @@ runTests = function(sendAfter)
         pcall(function()
             statusParagraph:SetContent(
                 "Tes selesai: " .. passed .. " PASS | " .. failed .. " FAIL | " .. info
-                    .. " INFO. Tekan F8 untuk tes keyboard (opsional), lalu kirim laporan terbaru."
+                    .. " INFO. Tempel URL Discord webhook pada kotak di bawah, lalu tekan Kirim Laporan. F8 opsional."
             )
         end)
     end
@@ -698,9 +708,11 @@ addReportButton()
 addRerunButton()
 
 -- Tes berjalan otomatis satu kali setelah UI berhasil dibuat.
--- Discord hanya dihubungi jika WEBHOOK_URL sudah diisi.
+-- Laporan langsung dikirim hanya jika WEBHOOK_URL sudah diatur di salinan pribadi.
+-- Jika kosong, masukkan URL melalui kotak di UI lalu tekan tombol Kirim Laporan.
+local autoSendConfigured = type(WEBHOOK_URL) == "string" and WEBHOOK_URL:match("^https://") ~= nil
 task.spawn(function()
-    runTests(true)
+    runTests(autoSendConfigured)
 end)
 
 print("[Quasar-X Tester] UI diagnostic dibuat.")
