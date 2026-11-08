@@ -1,7 +1,7 @@
 --// Quasar-X Tester v1.0.0
 --// Tester terpisah untuk Quasar-X Public v2.0.1
 --// Aman lintas-game: tidak memakai PlaceId khusus dan tidak membaca data akun.
---// Isi WEBHOOK_URL dengan Discord webhook milikmu sebelum menjalankan tester.
+--// Masukkan Discord webhook melalui kotak di UI tester; jangan commit URL rahasia ke repo.
 
 local TESTER_VERSION = "1.0.0"
 local LIBRARY_URL = "https://raw.githubusercontent.com/bismaaaa20-cloud/Test--library-main-UI-publik/main/Test"
