@@ -54,7 +54,7 @@ local function SetClipboard(value)
         return ok
 end
 
-local Library = { Version = "2.0.1", Windows = {} }
+local Library = { Version = "2.0.2", Windows = {} }
 
 -- Diagnostik pasif: hanya memeriksa keberadaan API, tidak mengirim request,
 -- menulis file, membaca data akun, atau mengubah pengaturan executor.
@@ -1054,7 +1054,7 @@ function Library:CreateWindow(opts)
                 ClipsDescendants = true,
                 Parent = root,
         }, {
-                Corner(16),
+                Corner(18),
                 self:_regStroke(OrbitStroke(1.6)),
         })
         self.Main = main
@@ -1063,7 +1063,9 @@ function Library:CreateWindow(opts)
         local header = New("Frame", {
                 Name = "Header",
                 Size = UDim2.new(1, 0, 0, 56),
-                BackgroundTransparency = 1,
+                BackgroundColor3 = Theme.Card,
+                BackgroundTransparency = 0.62,
+                BorderSizePixel = 0,
                 Parent = main,
         })
 
@@ -1146,15 +1148,15 @@ function Library:CreateWindow(opts)
                 BorderSizePixel = 0,
                 Parent = main,
         }, {
-                Corner(12),
-                Stroke(Theme.Glow, 1, 0.72),
+                Corner(14),
+                Stroke(Theme.Border, 1, 0.18),
         })
         self._sidebar = sidebar
 
         self._searchBox = New("TextBox", {
                 Position = UDim2.fromOffset(10, 10),
                 Size = UDim2.new(1, -20, 0, 36),
-                BackgroundColor3 = Theme.Secondary,
+                BackgroundColor3 = Theme.Background,
                 BackgroundTransparency = fieldT,
                 PlaceholderText = "Search...",
                 PlaceholderColor3 = Theme.SubText,
@@ -1168,7 +1170,7 @@ function Library:CreateWindow(opts)
         }, {
                 Corner(10),
                 Pad(34, 0, 10, 0),
-                Stroke(Theme.Glow, 1, 0.7),
+                Stroke(Theme.Border, 1, 0.12),
         })
         MagnifierIcon(self._searchBox, UDim2.new(0, -24, 0.5, 0))
 
@@ -1193,12 +1195,12 @@ function Library:CreateWindow(opts)
                 Position = UDim2.new(0, 10, 1, -10),
                 Size = UDim2.new(1, -20, 0, 50),
                 BackgroundColor3 = Theme.Secondary,
-                BackgroundTransparency = fieldT,
+                BackgroundTransparency = 0.08,
                 BorderSizePixel = 0,
                 Parent = sidebar,
         }, {
-                Corner(10),
-                Stroke(Theme.Glow, 1, 0.7),
+                Corner(11),
+                Stroke(Theme.Border, 1, 0.18),
         })
         self._profile = profile
         New("ImageLabel", {
@@ -1719,7 +1721,7 @@ function Window:AddTab(opts)
         tab._indicator = New("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
                 Position = UDim2.new(0, 0, 0.5, 0),
-                Size = UDim2.fromOffset(3, 20),
+                Size = UDim2.fromOffset(4, 22),
                 BackgroundColor3 = Theme.Blue,
                 BorderSizePixel = 0,
                 Visible = false,
