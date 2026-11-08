@@ -210,6 +210,11 @@ local function postRawDiscord(description, failed)
 end
 
 local function sendReport()
+    if WEBHOOK_URL == "ISI_WEBHOOK_DISCORD_DI_SINI" or type(WEBHOOK_URL) ~= "string" or not WEBHOOK_URL:match("^https://") then
+        addResult("Discord webhook report", "INFO", "Isi WEBHOOK_URL dengan URL Discord webhook HTTPS milikmu.")
+        return false, "Webhook belum diatur. Isi WEBHOOK_URL di bagian atas file tester."
+    end
+
     local description, failed = buildReport()
 
     if Library and type(Library.SendDiscordWebhook) == "function" then
@@ -536,6 +541,8 @@ runTests = function(sendAfter)
         addResult("Library:CheckCompatibility", "FAIL", tostring(compat))
     end
 
+    addResult("Game-agnostic environment", "INFO", "Tidak memakai PlaceId khusus. Tetap perlu diuji di tiap game karena proteksi dan izin executor berbeda.")
+
     local synDetails = {}
     local synTablePresent = type(syn) == "table"
     table.insert(synDetails, "syn=" .. tostring(synTablePresent))
@@ -553,11 +560,25 @@ runTests = function(sendAfter)
             return Library:IsWebhookSupported()
         end)
         webhookSupported = webhookOK and value == true
-        addResult("Library:IsWebhookSupported", webhookSupported and "PASS" or "FAIL",
-            webhookOK and tostring(value) or tostring(value))
+        local webhookStatus = not webhookOK and "FAIL" or (webhookSupported and "PASS" or "INFO")
+        local webhookDetail = not webhookOK and tostring(value)
+            or (webhookSupported and "HTTP request tersedia." or "Executor tidak menyediakan request API yang dikenali.")
+        addResult("Library:IsWebhookSupported", webhookStatus, webhookDetail)
     else
         addResult("Library:IsWebhookSupported", "FAIL", "Method tidak ditemukan.")
     end
+
+    runCase("AddSection / AddLabel / AddDivider / AddParagraph", function()
+        Tab:AddSection("Tes komponen informasi")
+        Tab:AddLabel("Quasar-X label test", 30)
+        Tab:AddDivider()
+        local paragraph = Tab:AddParagraph({ Title = "Paragraph test", Content = "Konten awal." })
+        assert(paragraph and type(paragraph.SetTitle) == "function", "Paragraph:SetTitle tidak ditemukan.")
+        assert(type(paragraph.SetContent) == "function", "Paragraph:SetContent tidak ditemukan.")
+        paragraph:SetTitle("Paragraph OK")
+        paragraph:SetContent("SetTitle dan SetContent berhasil.")
+        return "Section, Label, Divider, Paragraph, SetTitle, dan SetContent berhasil."
+    end)
 
     runCase("AddToggle: Set / Get / Callback", function()
         assert(toggleObject, "AddToggle gagal dibuat.")
