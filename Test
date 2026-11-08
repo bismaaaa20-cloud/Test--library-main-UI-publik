@@ -47,6 +47,114 @@ end
 
 local Library = { Version = "2.0.0", Windows = {} }
 
+--// ===== Anti-Scam scanner (heuristic; does not execute or block code) =====
+local AntiScamRules = {
+        {
+                Pattern = "roblosecurity",
+                Label = "Referensi cookie .ROBLOSECURITY",
+                Severity = "high",
+                Points = 5,
+        },
+        {
+                Pattern = "steal robux",
+                Label = "Klaim atau instruksi pencurian Robux",
+                Severity = "high",
+                Points = 5,
+        },
+        {
+                Pattern = "robux generator",
+                Label = "Klaim Robux generator",
+                Severity = "review",
+                Points = 3,
+        },
+        {
+                Pattern = "free robux",
+                Label = "Klaim gratis Robux yang perlu diverifikasi",
+                Severity = "review",
+                Points = 2,
+        },
+        {
+                Pattern = "session token",
+                Label = "Referensi session token",
+                Severity = "high",
+                Points = 5,
+        },
+        {
+                Pattern = "authentication token",
+                Label = "Referensi authentication token",
+                Severity = "high",
+                Points = 5,
+        },
+        {
+                Pattern = "account password",
+                Label = "Permintaan atau pengambilan password akun",
+                Severity = "high",
+                Points = 5,
+        },
+        {
+                Pattern = "discord.com/api/webhooks",
+                Label = "Endpoint Discord webhook (periksa data yang dikirim)",
+                Severity = "review",
+                Points = 2,
+        },
+}
+
+function Library:ScanScript(source)
+        if type(source) ~= "string" then
+                return false, "Source script harus berupa string."
+        end
+        if #source > 1000000 then
+                return false, "Source terlalu besar untuk diperiksa (maksimal 1 MB)."
+        end
+
+        local normalized = source:lower()
+        local findings = {}
+        local score = 0
+        local seen = {}
+
+        for _, rule in ipairs(AntiScamRules) do
+                if normalized:find(rule.Pattern, 1, true) and not seen[rule.Pattern] then
+                        seen[rule.Pattern] = true
+                        score = score + rule.Points
+                        table.insert(findings, {
+                                Indicator = rule.Label,
+                                Severity = rule.Severity,
+                        })
+                end
+        end
+
+        -- Pola loader umum tidak otomatis dianggap scam; cukup minta pemeriksaan.
+        if normalized:find("httpget", 1, true)
+                and normalized:find("loadstring", 1, true) then
+                score = score + 1
+                table.insert(findings, {
+                        Indicator = "Loader mengambil lalu menjalankan kode dari internet",
+                        Severity = "review",
+                })
+        end
+
+        local risk = "low"
+        local recommendation = "Tidak ada indikator yang cocok. Ini bukan jaminan script aman."
+        if score >= 5 then
+                risk = "high"
+                recommendation = "Hentikan sementara dan periksa source serta tujuan request sebelum menjalankan."
+        elseif score > 0 then
+                risk = "review"
+                recommendation = "Periksa indikator secara manual. Jangan langsung menyimpulkan script ini scam."
+        end
+
+        return true, {
+                Risk = risk,
+                Score = score,
+                Findings = findings,
+                Recommendation = recommendation,
+                AutoBlocked = false,
+                Disclaimer = "Pemeriksaan berbasis pola sederhana; bisa salah mendeteksi dan tidak dapat menjamin keamanan.",
+        }
+end
+
+
+
 --// ===== Webhook support (executor HTTP request API) =====
 function Library:IsWebhookSupported()
         return typeof(requestFn) == "function"
