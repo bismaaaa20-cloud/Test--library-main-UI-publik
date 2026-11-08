@@ -9,11 +9,11 @@ Script penguji terpisah tersedia di [Quasar-X-Tester.lua](https://github.com/bis
 
 ### Cara menjalankan
 
-1. Buka file tester, lalu salin isinya atau jalankan loader di bawah.
-2. Isi `WEBHOOK_URL` di bagian atas file dengan URL Discord webhook milikmu. Jangan memasukkan URL webhook asli ke repository publik.
-3. Jalankan tester melalui executor di game Roblox yang ingin diuji.
-4. Tester akan membuat jendela diagnostik, menjalankan pemeriksaan otomatis, lalu mengirim laporan ke Discord jika webhook sudah diatur.
-5. Untuk tes keyboard, tekan F8. Tekan tombol **Kirim laporan terbaru ke Discord** agar hasil tes manual ikut terkirim.
+1. Jalankan loader di bawah melalui executor pada game Roblox yang ingin diuji.
+2. Tester membuat jendela diagnostik dan menjalankan pemeriksaan otomatis.
+3. Tempel URL Discord webhook pada kotak **Discord Webhook URL** di jendela tester.
+4. Tekan **Kirim laporan terbaru ke Discord** untuk mengirim hasil dan error ke channel Discord.
+5. Untuk tes keyboard, tekan F8 terlebih dahulu, lalu kirim ulang laporan agar hasil tes manual ikut tercatat.
 
 Loader tester:
 
@@ -32,7 +32,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/bismaaaa20-cloud/Test
 
 Tester tidak menggunakan PlaceId khusus, sehingga dapat dicoba di berbagai game. Namun, tidak ada cara untuk menjamin semua executor atau semua game akan kompatibel; proteksi game, izin executor, perangkat, dan pembaruan Roblox dapat memengaruhi hasil.
 
-**Privasi:** laporan hanya mengirim nama executor, nama game, PlaceId, kemampuan yang terdeteksi, hasil tes, dan pesan error. Tester tidak mengirim nama akun, UserId, JobId, cookie, token, atau URL webhook. Jangan membagikan URL Discord webhook karena siapa pun yang memilikinya dapat mengirim pesan ke channel tersebut.
+**Privasi:** laporan hanya mengirim nama executor, nama game, PlaceId, kemampuan yang terdeteksi, hasil tes, dan pesan error. Tester tidak mengirim nama akun, UserId, JobId, cookie, token, atau URL webhook. URL webhook hanya digunakan di memori lokal untuk mengirim laporan dan tidak ditampilkan dalam laporan Discord. Jangan membagikan URL Discord webhook karena siapa pun yang memilikinya dapat mengirim pesan ke channel tersebut.
 
 ## Load
 
