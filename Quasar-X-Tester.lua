@@ -182,6 +182,8 @@ pcall(function()
     placeId = tostring(game.PlaceId)
 end)
 
+createTerminal()
+
 local results = {}
 local Library = nil
 local compatibility = nil
@@ -512,6 +514,7 @@ toggleObject = safeCreate("AddToggle", function()
     return Tab:AddToggle({
         Name = "Toggle callback test",
         Default = false,
+        Flag = "TesterToggleFlag",
         Callback = function(value)
             callbackValues.Toggle = value
         end,
@@ -740,7 +743,8 @@ runTests = function(sendAfter)
         toggleObject:Set(false)
         assert(toggleObject:Get() == false, "Get() tidak mengembalikan false.")
         assert(callbackValues.Toggle == false, "Callback tidak menerima nilai false.")
-        return "Get() dan callback menerima true lalu false."
+        assert(Window.Flags.TesterToggleFlag == false, "Flag tidak menyimpan nilai terbaru.")
+        return "Get(), callback, dan Window.Flags menerima nilai true lalu false."
     end)
 
     runCase("AddSlider: Set / Get / Callback", function()
