@@ -59,6 +59,27 @@ local Progress = Main:AddProgressBar({
 Progress:Set(75)
 ```
 
+## Diagnostik kompatibilitas executor
+
+Gunakan pemeriksaan ini untuk melihat API yang terdeteksi pada executor saat ini. Pemeriksaan bersifat pasif dan tidak mencoba mengirim HTTP, menulis/menghapus file, atau mengakses data akun.
+
+```lua
+local report = Library:CheckCompatibility()
+
+print("Executor:", report.Executor)
+print("Versi Quasar-X:", report.Version)
+
+for _, name in ipairs(report.Supported) do
+    print("[OK]", name)
+end
+
+for _, name in ipairs(report.Unsupported) do
+    warn("[TIDAK TERSEDIA]", name)
+end
+```
+
+API dideteksi ulang saat fitur terkait dipakai, sehingga API yang muncul terlambat dapat dikenali. Hasil deteksi hanya menunjukkan keberadaan fungsi; bukan bukti bahwa API pasti berhasil pada semua versi executor atau semua perangkat.
+
 ## Webhook support
 
 Quasar-X dapat mengirim JSON ke endpoint HTTPS menggunakan HTTP request API milik executor. Tidak semua executor menyediakan API tersebut; cek dahulu dengan `Library:IsWebhookSupported()`.
