@@ -1,4 +1,4 @@
---// Quasar-X v2.0.1 Public | responsive UI library for mobile and desktop
+--// Quasar-X v2.0.2 Public | responsive UI library for mobile and desktop
 --// Load: loadstring(game:HttpGet(URL))()
 --// API: CreateWindow / AddTab / AddSection / AddToggle / AddSlider / AddDropdown /
 --//      AddInput / AddKeybind / AddButton / AddLabel / Notify
@@ -54,7 +54,7 @@ local function SetClipboard(value)
         return ok
 end
 
-local Library = { Version = "2.0.1", Windows = {} }
+local Library = { Version = "2.0.2", Windows = {} }
 
 -- Diagnostik pasif: hanya memeriksa keberadaan API, tidak mengirim request,
 -- menulis file, membaca data akun, atau mengubah pengaturan executor.
