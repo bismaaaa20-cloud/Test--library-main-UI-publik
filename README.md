@@ -106,6 +106,31 @@ end
 
 **Keamanan:** URL Discord webhook adalah rahasia seperti password. Jangan membagikannya di script publik atau repository publik. Jangan kirim password, cookie, token, atau data pribadi pemain. Pengiriman webhook hanya berjalan saat fungsi dipanggil secara eksplisit. Webhook Discord dapat membalas HTTP 204 saat berhasil, yang dianggap sukses oleh library.
 
+## Anti-Scam scanner
+
+Quasar-X menyediakan pemeriksaan pola mencurigakan pada source yang diberikan oleh pemanggil. Scanner ini hanya membaca teks; **tidak menjalankan source dan tidak otomatis memblokir script**. Hasilnya adalah petunjuk untuk ditinjau pengguna/executor, bukan vonis bahwa script pasti scam atau aman.
+
+```lua
+local sourceToCheck = [[
+-- Tempel source yang ingin diperiksa di sini
+]]
+
+local ok, result = Library:ScanScript(sourceToCheck)
+if not ok then
+    warn("Pemeriksaan gagal:", result)
+else
+    print("Risk:", result.Risk) -- low, review, high
+    print("Score:", result.Score)
+    print("Recommendation:", result.Recommendation)
+
+    for _, finding in ipairs(result.Findings) do
+        warn(finding.Severity .. ": " .. finding.Indicator)
+    end
+end
+```
+
+Scanner mencari beberapa indikator seperti referensi cookie/token, klaim Robux gratis/generator, endpoint webhook, dan pola loader internet. HTTP request, webhook, atau `loadstring` tidak otomatis berarti scam. Pemeriksaan pola bisa melewatkan ancaman atau memberi peringatan keliru; jangan pernah memasukkan password, cookie, token, atau data akun ke script yang tidak dipercaya.
+
 ## Fitur
 
 - Layout responsif untuk HP portrait, HP landscape, dan desktop.
