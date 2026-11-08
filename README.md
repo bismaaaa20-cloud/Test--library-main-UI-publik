@@ -1,6 +1,38 @@
-# Quasar-X Public v2.0
+# Quasar-X Public v2.0.1
 
 Library UI Roblox yang responsif untuk perangkat mobile dan desktop.
+
+
+## Quasar-X Tester lintas-game
+
+Script penguji terpisah tersedia di [Quasar-X-Tester.lua](https://github.com/bismaaaa20-cloud/Test--library-main-UI-publik/blob/main/Quasar-X-Tester.lua).
+
+### Cara menjalankan
+
+1. Buka file tester, lalu salin isinya atau jalankan loader di bawah.
+2. Isi `WEBHOOK_URL` di bagian atas file dengan URL Discord webhook milikmu. Jangan memasukkan URL webhook asli ke repository publik.
+3. Jalankan tester melalui executor di game Roblox yang ingin diuji.
+4. Tester akan membuat jendela diagnostik, menjalankan pemeriksaan otomatis, lalu mengirim laporan ke Discord jika webhook sudah diatur.
+5. Untuk tes keyboard, tekan F8. Tekan tombol **Kirim laporan terbaru ke Discord** agar hasil tes manual ikut terkirim.
+
+Loader tester:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/bismaaaa20-cloud/Test--library-main-UI-publik/main/Quasar-X-Tester.lua"))()
+```
+
+### Pemeriksaan yang dilakukan
+
+- Identifikasi nama executor dan pemeriksaan API umum/Syn yang tersedia.
+- Snapshot perkiraan memori Lua melalui `collectgarbage("count")`, jika tersedia.
+- Pemeriksaan kompatibilitas dan ketersediaan PlayerGui.
+- Pembuatan komponen Section, Label, Divider, Paragraph, Toggle, Slider, Input, Dropdown, ProgressBar, Button, dan Keybind.
+- Pengujian nilai `Set()`, `Get()`, dan callback pada komponen yang mendukungnya.
+- Pengujian `Window:Show()`, `Window:Hide()`, notifikasi, dan callback keyboard F8 secara manual.
+
+Tester tidak menggunakan PlaceId khusus, sehingga dapat dicoba di berbagai game. Namun, tidak ada cara untuk menjamin semua executor atau semua game akan kompatibel; proteksi game, izin executor, perangkat, dan pembaruan Roblox dapat memengaruhi hasil.
+
+**Privasi:** laporan hanya mengirim nama executor, nama game, PlaceId, kemampuan yang terdeteksi, hasil tes, dan pesan error. Tester tidak mengirim nama akun, UserId, JobId, cookie, token, atau URL webhook. Jangan membagikan URL Discord webhook karena siapa pun yang memilikinya dapat mengirim pesan ke channel tersebut.
 
 ## Load
 
