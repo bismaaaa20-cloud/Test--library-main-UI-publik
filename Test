@@ -12,6 +12,7 @@
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
@@ -695,6 +696,53 @@ function Library:CreateWindow(opts)
                 Parent = gui,
         })
         self.Root = root
+
+        --// Floating button: selalu berada di tengah sisi atas, terpisah dari Root
+        --// sehingga tetap terlihat saat panel utama disembunyikan.
+        local floatingButton = New("TextButton", {
+                Name = "FloatingToggle",
+                AnchorPoint = Vector2.new(0.5, 0),
+                Position = UDim2.new(0.5, 0, 0, 8),
+                Size = UDim2.fromOffset(44, 44),
+                BackgroundColor3 = Theme.Panel,
+                BackgroundTransparency = 0.04,
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                Text = "≡",
+                TextColor3 = Theme.Soft,
+                TextSize = 25,
+                Font = FONT.Bold,
+                ZIndex = 1000,
+                Parent = gui,
+        }, {
+                Corner(1, 0),
+                New("UIStroke", { Color = Theme.Blue, Thickness = 1.6, Transparency = 0.08 }),
+        })
+        self.FloatingButton = floatingButton
+
+        local function positionFloatingButton()
+                local topInset = Vector2.zero
+                local ok, inset = pcall(function()
+                        local topLeft = GuiService:GetGuiInset()
+                        return topLeft
+                end)
+                if ok and typeof(inset) == "Vector2" then
+                        topInset = inset
+                end
+                floatingButton.Position = UDim2.new(0.5, 0, 0, math.max(8, topInset.Y + 8))
+        end
+        positionFloatingButton()
+        track(UserInputService.InputBegan and gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(positionFloatingButton) or nil)
+        local camera = workspace.CurrentCamera
+        if camera then
+                track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(positionFloatingButton))
+        end
+        track(floatingButton.Activated:Connect(function()
+                if self.Root and self.Root.Parent then
+                        self:Toggle()
+                end
+        end))
+
         self._scale = New("UIScale", { Scale = 1, Parent = root })
 
         for _, sh in ipairs({ { 18, 0.9, 6 }, { 8, 0.8, 3 } }) do
